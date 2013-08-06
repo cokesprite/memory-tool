@@ -34,8 +34,10 @@ do
     if [ "$time_count" != "$pss_count" ]
     then
         head -$pss_count time-$proc.txt > time2-$proc.txt
+	    paste time2-$proc.txt PSS-RSS-$proc.txt >> result-$proc.txt	
+    else
+	    paste time-$proc.txt PSS-RSS-$proc.txt >> result-$proc.txt	
     fi
-	paste time2-$proc.txt PSS-RSS-$proc.txt >> result-$proc.txt	
 	cat result-$proc.txt |sed 's/ /\t/g' > tab-result-$proc.txt
 	cat tab-result-$proc.txt |sed -n 's/\t/,/gp' > c-$proc.txt
 	cat c-$proc.txt |sed 's/\#/ /g' > csv-$proc.csv
@@ -45,7 +47,7 @@ do
 	rm time_and_$proc
 	rm time-$proc.txt
 	rm PSS-RSS-$proc.txt
-	rm time2-$proc.txt
+	rm -f time-$proc.txt time2-$proc.txt
 	rm result-$proc.txt
 	rm tab-result-$proc.txt
 	rm c-$proc.txt
