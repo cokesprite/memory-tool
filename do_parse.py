@@ -16,10 +16,22 @@ from matplotlib.ticker import MultipleLocator, AutoLocator, FormatStrFormatter
 
 
 class MemInfoParser:
-    BGroup = ['Buffers', 'Mlocked', 'AnonPages','Shmem','Slab','KernelStack','PageTables','VmallocAlloc','ION_Alloc']
-
     def __init__(self):
         self.path = sys.path[0] +'/'
+        self.fileName = ''
+        self.date = []
+        self.memTotal = []
+        self.memFree = []
+        self.cached = []
+        self.buffers = []
+        self.mlocked = []
+        self.anonPages = []
+        self.shmem = []
+        self.slab = []
+        self.kernelStack = []
+        self.pageTables = []
+        self.vmallocAlloc = []
+        self.ION_Alloc = []
 
     def findLogFile(self):
         path = sys.path[0]
@@ -54,48 +66,73 @@ class MemInfoParser:
         plt.savefig(n + '.png', dpi=200, facecolor='w', edgecolor='w',
                 orientation='portrait', papertype=None, format=None,
                 transparent=False, bbox_inches=None, pad_inches=0.1)
-        #plt.show()
-
-    def parse_A_Group(self, logfile):
-        #print logfile
-        f = logfile
-        input_file = open(f, "rb")
-
-        date = []
-        memTotal = []
-        memFree = []
-        cached = []
-        #writer = csv.writer(file('new.csv', 'wb'))
+        #plt.show
+        
+    def readData(self, logfile):
+        self.file = logfile     
+        input_file = open(self.file, "rb")
         spamreader = csv.reader(input_file)
         for row in spamreader:
-            if (row[1] != '' and row[2] !='' and row[10] !=''):
-                date.append(row[0])
-                memTotal.append(row[1])
-                memFree.append(row[2])
-                cached.append(row[10])
+            #if (row[1] != '' and row[2] !='' and row[10] !=''):
+            self.date.append(row[0])
+            self.memTotal.append(row[1])
+            self.memFree.append(row[2])
+            self.cached.append(row[10])
+            self.buffers.append(row[9])
+            self.mlocked.append(row[11])
+            self.anonPages.append(row[12])
+            self.shmem.append(row[13])
+            self.slab.append(row[14])
+            self.kernelStack.append(row[15])
+            self.pageTables.append(row[16])
+            self.vmallocAlloc.append(row[17])
+            self.ION_Alloc.append(row[18])
         input_file.close()
-        del date[0]
-        del memFree[0]
-        del memTotal[0]
-        del cached[0]
+        
+        # Delete header: first column
+        del self.date[0]
+        del self.memFree[0]
+        del self.memTotal[0]
+        del self.cached[0]
+        del self.buffers[0]
+        del self.mlocked[0]
+        del self.anonPages[0]
+        del self.shmem[0]
+        del self.slab[0]
+        del self.kernelStack[0]
+        del self.pageTables[0]
+        del self.vmallocAlloc[0]
+        del self.ION_Alloc[0]
+        
+        # KB -> MB
+        self.date = self.formatDate(self.date)
+        self.memTotal = self.formatValue(self.memTotal)
+        self.memFree = self.formatValue(self.memFree)
+        self.cached = self.formatValue(self.cached)
+        self.buffers = self.formatValue(self.buffers)
+        self.mlocked = self.formatValue(self.mlocked)
+        self.anonPages = self.formatValue(self.anonPages)
+        self.shmem = self.formatValue(self.shmem)
+        self.slab = self.formatValue(self.slab)
+        self.kernelStack = self.formatValue(self.kernelStack)
+        self.pageTables = self.formatValue(self.pageTables)
+        self.vmallocAlloc = self.formatValue(self.vmallocAlloc)
+        self.ION_Alloc = self.formatValue(self.ION_Alloc)
 
-        date = self.formatDate(date)
-        memTotal = self.formatValue(memTotal)
-        memFree = self.formatValue(memFree)
-        cached = self.formatValue(cached)
-        N = len(date)
+    def parse_A_Group(self):
+        N = len(self.date)
         ind = np.arange(N)
 
         def format_date(x, pos=None):
             thisind = np.clip(int(x+0.5), 0, N-1)
-            return date[thisind]
+            return self.date[thisind]
 
         fig = plt.figure(dpi=100)
         fig.canvas.set_window_title('Meminfo analysis')
         ax = fig.add_subplot(111)
-        ax.plot(ind,memTotal,'r-',memFree,'g-',cached,'c-')
+        ax.plot(ind,self.memTotal,'r-',self.memFree,'g-',self.cached,'c-')
         ax.grid(True)
-        ax.set_title('Meminfo analysis -- ' + self.setPlotTitle(f))
+        ax.set_title('Meminfo analysis -- ' + self.setPlotTitle(self.file))
         ax.set_xlabel('Time')
         ax.set_ylabel('Mem Info(MiB)')
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_date))
@@ -103,129 +140,36 @@ class MemInfoParser:
         legend(('Total Mem','Free Mem','Cached'),0 )#'upper right'
         self.savePic('meminfo_analysis_a_group')
 
-    def parse_AA_Group(self, logfile):
-        print logfile
-        datafile = logfile
-        print ('loading %s' % datafile)
-        r = mlab.csv2rec(datafile)
 
-        N = len(r)
-        ind = np.arange(N)
-        def format_date(x, pos=None):
-            thisind = np.clip(int(x+0.5), 0, N-1)
-            return r.time[thisind].strftime('%m-%d %H:%M:%S')
-
-        fig = plt.figure(dpi=100, figsize=(15, 10))
-        fig.canvas.set_window_title(logfile)
-        ax = fig.add_subplot(111)
-        ax.plot(ind, r.memtotal, 'g-', r.memfree, 'r-',r.cached, 'b-',)
-        ax.grid(True)
-        ax.set_title('MemoInfo analysis -- ' + self.setPlotTitle(datafile))
-        ax.set_xlabel('Time')
-        ax.set_ylabel('MemeInfo(kB)')
-        ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_date))
-        fig.autofmt_xdate()
-
-        legend(('MemTotal','MemFree','Cached'),0)
-        self.savePic('meminfo_analysis_aa_group')
-
-    def parse_B_Group(self, logfile):
-        BGroup = ['Buffers', 'Mlocked', 'AnonPages','Shmem','Slab',
-                  'KernelStack','PageTables','VmallocAlloc','ION_Alloc']
-        f = logfile
-        input_file = open(f, "rb")
-
-        Buffers = []
-        Mlocked = []
-        AnonPages = []
-        Shmem = []
-        Slab = []
-        KernelStack = []
-        PageTables = []
-        VmallocAlloc = []
-        ION_Alloc = []
-
-        for row in csv.reader(input_file):
-            Buffers.append(row[9])
-            Mlocked.append(row[11])
-            AnonPages.append(row[12])
-            Shmem.append(row[13])
-            Slab.append(row[14])
-            KernelStack.append(row[15])
-            PageTables.append(row[16])
-            VmallocAlloc.append(row[17])
-            ION_Alloc.append(row[18])
-
-        input_file.close()
-
-        #for i in BGroup:
-            #print i
-            #del i[0]
-        del Buffers[0]
-        del Mlocked[0]
-        del AnonPages[0]
-        del Shmem[0]
-        del Slab[0]
-        del KernelStack[0]
-        del PageTables[0]
-        del VmallocAlloc[0]
-        del ION_Alloc[0]
-
-        N = len(Buffers)
+    def parse_B_Group(self):
+        N = len(self.date)
         ind = np.arange(N)
 
         def format_date(x, pos=None):
             thisind = np.clip(int(x+0.5), 0, N-1)
-            return r.time[thisind].strftime('%m-%d %H:%M:%S')
+            return self.date[thisind]
 
         fig = plt.figure(dpi=100, figsize=(20, 20))
         fig.canvas.set_window_title('Meminfo analysis')
 
         ax = fig.add_subplot(211)
-        ax.plot(ind,Buffers,'g-',Mlocked,'0.4', Shmem,'c-',Slab,'k-',KernelStack,'r-',PageTables,'y-',VmallocAlloc,'b-',ION_Alloc,'m-')
+        ax.plot(ind,self.buffers,'g-',self.mlocked,'0.4', self.shmem,'c-',self.slab,'k-',self.kernelStack,'r-',self.pageTables,'y-',self.vmallocAlloc,'b-',self.ION_Alloc,'m-')
         ax.grid(True)
-        ax.set_title('Meminfo analysis -- ' + self.setPlotTitle(f))
-        ax.set_xlabel('Count')
-        ax.set_ylabel('Mem Info(kB)')
+        ax.set_title('Meminfo analysis -- ' + self.setPlotTitle(self.file))
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Mem Info(MiB)')
+        ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_date))
         fig.autofmt_xdate()
-
-        legend(('Buffers','Mlocked','Shmem','Slab','KernelStack','PageTables','VmallocAlloc','ION_Alloc'),0 )#'upper right'
+        legend(('Buffers','Mlocked','Shmem','Slab','KernelStack','PageTables','VmallocAlloc','ION_Alloc'),0 )
 
         ax1 = fig.add_subplot(212)
-        ax1.plot(ind,AnonPages,'g-',Slab,'k-')
-        legend(('AnonPages', 'Slab'),'upper right')
-        self.savePic('meminfo_analysis_b_group')
-
-    def parse_BB_Group(self, logfile):
-        print logfile
-        datafile = logfile
-        print ('loading %s' % datafile)
-        r = mlab.csv2rec(datafile)
-
-        N = len(r)
-        ind = np.arange(N)
-        def format_date(x, pos=None):
-            thisind = np.clip(int(x+0.5), 0, N-1)
-            return r.time[thisind].strftime('%m-%d %H:%M:%S')
-
-        fig = plt.figure(dpi=100, figsize=(15, 20))
-        fig.canvas.set_window_title(logfile)
-        ax = fig.add_subplot(211)
-        ax.plot(ind, r.buffers,'g-',r.shmem,'c-',r.slab,'k-',r.kernelstack,'r-',r.pagetables,'y-',r.vmallocalloc,'b-',r.ion_alloc,'m-')
-        ax.grid(True)
-        ax.set_title('MemoInfo analysis -- ' + self.setPlotTitle(datafile))
-        ax.set_xlabel('Times')
-        ax.set_ylabel('MemeInfo(kB)')
-        ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_date))
-        fig.autofmt_xdate()
-        legend(('Buffers','Shmem','Slab','KernelStack','PageTables','VmallocAlloc','ION_Alloc'),0 )#'upper right'
-
-        ax = fig.add_subplot(212)
-        ax.plot(ind,r.anonpages,'g-',r.slab,'k-')
-        ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_date))
+        ax1.plot(ind,self.anonPages,'g-',self.slab,'k-')
+        ax1.set_xlabel('Time')
+        ax1.set_ylabel('Mem Info(MiB)')
+        ax1.xaxis.set_major_formatter(ticker.FuncFormatter(format_date))
         #fig.autofmt_xdate()
         legend(('AnonPages', 'Slab'),'upper right')
-        self.savePic('meminfo_analysis_bb_group')
+        self.savePic('meminfo_analysis_b_group')
 
 class ProcrankParser():
     def __init__(self):
@@ -245,7 +189,6 @@ class ProcrankParser():
         datafile = self.path + file
         print ('loading %s' % datafile)
         r = mlab.csv2rec(datafile)
-        #r.sort()
         N = len(r)
         ind = np.arange(N)
 
@@ -268,29 +211,25 @@ class ProcrankParser():
         plt.savefig(self.path + file  + '.png', dpi=200, facecolor='w', edgecolor='w',
                 orientation='portrait', papertype=None, format=None,
                 transparent=False, bbox_inches=None, pad_inches=0.1)
-        #plt.show()
 
 
 def parseMemInfo():
     meminfo = MemInfoParser()
     files = meminfo.findLogFile()
     for f in files:
-        meminfo.parse_A_Group(f)
-        meminfo.parse_B_Group(f)
-        # TBD: below function need to format csv file time-format and header-format
-        #meminfo.parse_AA_Group(f)
-        #meminfo.parse_BB_Group(f)
+        meminfo.readData(f)
+        meminfo.parse_A_Group()
+        meminfo.parse_B_Group()
 
 def parseProcrank():
     p = ProcrankParser()
     csvfiles = p.findCsvFiles()
     for i in csvfiles:
-        #p.draw(i,0,'rss','pss')
         p.draw(i)
 
 def main(argv):
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hm:p:f:")
+        opts, args = getopt.getopt(sys.argv[1:], "hm:p:")
     except getopt.GetoptError, err:
         print str(err)
         #usage()
@@ -302,15 +241,11 @@ def main(argv):
         elif op == "-p":
             parseProcrank()
             sys.exit(0)
-        elif op == "-f":
-            fileProcrankFiles()
-            sys.exit(0)
         elif op == "-h":
             print "usage() func"
             #usage()
             sys.exit(1)
-    #if !opts:
-    #    parseProcrank()
+
 
 if __name__ == "__main__":
     main(sys.argv)
