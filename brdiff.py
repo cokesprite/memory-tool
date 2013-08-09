@@ -3,7 +3,7 @@
 import sys
 import optparse
 import datetime
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Frame, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus.tables import TableStyle
 from reportlab.lib import colors
@@ -19,11 +19,8 @@ class BRInfo(object):
         self.procrank = {}
         self.proc = []
         self.parseBugReport()
-        sf
 
     def parseBugReport(self):
-        print ('---> Start processing %s' % self.filePath)
-
         fileObject = open(self.filePath, 'r').read()
 
         meminfoStart = fileObject.find("------ MEMORY INFO")
@@ -37,8 +34,6 @@ class BRInfo(object):
             formated = line.split()
             self.proc.append(formated[-1])
             self.procrank[formated[-1]]=formated[0:-1]
-
-        print ('---> Done')
 
 class BRCompare(object):
 
@@ -67,10 +62,9 @@ class BRCompare(object):
 class PDFGen(object):
     Title = 'Bugreport Comparision - Meminfo and Procrank'
     Date = datetime.datetime.now().strftime("%Y-%m-%d")
-    pageinfo = 'Bugreport Comparision'
 
     (PAGE_WIDTH, PAGE_HEIGHT) = defaultPageSize
-    styles = getSampleStyleSheet()
+    Styles = getSampleStyleSheet()
 
     def drawCoverPage(self, canvas, doc):
         canvas.saveState()
@@ -89,7 +83,7 @@ class PDFGen(object):
         canvas.restoreState()
 
     def drawMeminfo(self, data):
-        t=Table(data, None, None, None, 1, 1)
+        t = Table(data, None, None, None, 1, 1)
         t.setStyle(TableStyle([('FONT', (0,0), (-1,-1), 'Helvetica'),
                                ('BACKGROUND', (0,0), (-1,0), colors.green),
                                ('FONTSIZE', (0,0), (-1,-1), 8),
@@ -109,17 +103,17 @@ class PDFGen(object):
             if i !=0 and i % 2 != 0:
                 styles.append(('SPAN', (0, i), (0, i + 1)))
 
-        t.setStyle(TableStyle([('FONT', (0,0), (-1,-1), 'Helvetica'),
-                               ('BACKGROUND', (0,0), (-1,0), colors.green),
-                               ('FONTSIZE', (0,0), (-1,-1), 8),
-                               ('GRID', (0,0), (-1,-1), 1, colors.black),
-                               ('BOX', (0,0), (-1,-1), 2, colors.black),
-                               ('BOX', (0,0), (-1,0), 2, colors.black),
-                               ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
-                               ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                               ('TOPPADDING', (0,0), (-1,-1), 1),
-                               ('BOTTOMPADDING', (0,0), (-1,-1), 1),
-                               ]+styles
+        t.setStyle(TableStyle([('FONT', (0, 0), (-1, -1), 'Helvetica'),
+                               ('BACKGROUND', (0, 0), (-1, 0), colors.green),
+                               ('FONTSIZE', (0, 0), (-1, -1), 8),
+                               ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                               ('BOX', (0, 0), (-1, -1), 2, colors.black),
+                               ('BOX', (0, 0), (-1, 0), 2, colors.black),
+                               ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
+                               ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                               ('TOPPADDING', (0, 0), (-1, -1), 1),
+                               ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+                               ] + styles
                                ))
         return t
 
@@ -130,8 +124,8 @@ class PDFGen(object):
         else:
             filePath = 'Bugreport Comparision %s.pdf' % self.Date
         doc = SimpleDocTemplate(filePath)
-        style = self.styles["Normal"]
-        story = [Spacer(1, 1.7*inch)]
+        style = self.Styles["Normal"]
+        story = [Spacer(1, 1.7 * inch)]
         story.append(PageBreak())
 
         if meminfo:
