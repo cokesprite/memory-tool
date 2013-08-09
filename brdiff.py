@@ -93,15 +93,15 @@ class PDFGen(object):
 
     def drawMeminfo(self, data):
         t = Table(data, None, None, None, 1, 1)
-        t.setStyle(TableStyle([('FONT', (0,0), (-1,-1), 'Helvetica'),
-                               ('BACKGROUND', (0,0), (-1,0), colors.green),
-                               ('FONTSIZE', (0,0), (-1,-1), 8),
-                               ('GRID', (0,0), (-1,-1), 1, colors.black),
-                               ('BOX', (0,0), (-1,-1), 2, colors.black),
-                               ('BOX', (0,0), (-1,0), 2, colors.black),
-                               ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
-                               ('TOPPADDING', (0,0), (-1,-1), 1),
-                               ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+        t.setStyle(TableStyle([('FONT', (0, 0), (-1, -1), 'Helvetica'),
+                               ('BACKGROUND', (0, 0), (-1, 0), colors.green),
+                               ('FONTSIZE', (0, 0), (-1, -1), 8),
+                               ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                               ('BOX', (0, 0), (-1, -1), 2, colors.black),
+                               ('BOX', (0, 0), (-1, 0), 2, colors.black),
+                               ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
+                               ('TOPPADDING', (0, 0), (-1, -1), 1),
+                               ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
                                ]))
         return t
 
