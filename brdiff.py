@@ -40,21 +40,30 @@ class BRCompare(object):
     def execute(self, left, right):
         meminfo = []
         procrank = []
-        meminfo.append(['Item', 'File: %s' % left.filePath, 'File: %s' % right.filePath])
-        procrank.append(['cmdline', 'A(%s)\nB(%s)' % (left.filePath, right.filePath), 'PID', 'Vss', 'Rss', 'Pss', 'Uss'])
+        meminfo.append(['Item', 'A: %s' % left.filePath, 'B: %s' % right.filePath, 'Diff: A-B'])
+        procrank.append(['cmdline', 'A: %s\nB: %s' % (left.filePath, right.filePath), 'PID', 'Vss', 'Rss', 'Pss', 'Uss'])
         for i, j in zip(left.meminfo, right.meminfo):
-            meminfo.append([i[0], i[1], j[1]])
+            meminfo.append([i[0], i[1], j[1], '%d' % (int(i[1]) - int(j[1]))])
 
         for i in left.proc:
             procrank.append([i, 'A'] + left.procrank[i])
             if right.procrank.has_key(i):
-                procrank.append([i, 'B'] + right.procrank.pop(i))
+                rightValues = right.procrank.pop(i)
+                procrank.append([i, 'B'] + rightValues)
+                procrank.append(['', 'Diff: A-B', '-',
+                                '%dK' % (int(left.procrank[i][1][:-1]) - int(rightValues[1][:-1])),
+                                '%dK' % (int(left.procrank[i][2][:-1]) - int(rightValues[2][:-1])),
+                                '%dK' % (int(left.procrank[i][3][:-1]) - int(rightValues[3][:-1])),
+                                '%dK' % (int(left.procrank[i][4][:-1]) - int(rightValues[4][:-1])),
+                                ])
             else:
                 procrank.append([i, 'B', '-', '-', '-', '-', '-'])
+                procrank.append(['', 'Diff: A-B', '-', '-', '-', '-', '-'])
         for i in right.proc:
             if right.procrank.has_key(i):
                 procrank.append([i, 'A', '-', '-', '-', '-', '-'])
                 procrank.append([i, 'B'] + right.procrank[i])
+                procrank.append(['', 'Diff: A-B', '-', '-', '-', '-', '-'])
 
         pdf = PDFGen()
         pdf.generate(meminfo, procrank)
@@ -100,8 +109,8 @@ class PDFGen(object):
         t = Table(data, None, None, None, 1, 1)
         styles = []
         for i in range(len(data)):
-            if i !=0 and i % 2 != 0:
-                styles.append(('SPAN', (0, i), (0, i + 1)))
+            if i !=0 and i % 3 == 1:
+                styles.append(('SPAN', (0, i), (0, i + 2)))
 
         t.setStyle(TableStyle([('FONT', (0, 0), (-1, -1), 'Helvetica'),
                                ('BACKGROUND', (0, 0), (-1, 0), colors.green),
