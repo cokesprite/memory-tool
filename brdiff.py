@@ -87,7 +87,7 @@ class Compare(object):
         if len(left.proc) > 0 and len(right.proc) > 0:
             procrank.append(['cmdline', 'A: %s\nB: %s' % (left.filePath, right.filePath), 'PID', 'Vss (KB)', 'Rss (KB)', 'Pss (KB)', 'Uss (KB)'])
             for i in left.proc:
-                procrank.append([i, 'A'] + left.procrank[i])
+                procrank.append(['', 'A'] + left.procrank[i])
                 if right.procrank.has_key(i):
                     rightValues = right.procrank.pop(i)
                     procrank.append([i, 'B'] + rightValues)
@@ -102,7 +102,7 @@ class Compare(object):
                     procrank.append(['', 'Diff: A-B', '-', '-', '-', '-', '-'])
             for i in right.proc:
                 if right.procrank.has_key(i):
-                    procrank.append([i, 'A', '-', '-', '-', '-', '-'])
+                    procrank.append(['', 'A', '-', '-', '-', '-', '-'])
                     procrank.append([i, 'B'] + right.procrank[i])
                     procrank.append(['', 'Diff: A-B', '-', '-', '-', '-', '-'])
 
@@ -136,9 +136,10 @@ class PDFGen(object):
         canvas.restoreState()
 
     def drawMeminfo(self, data):
-        t = Table(data, None, None, None, 1, 1)
+        t = Table(data, None, None, None, 1, 1, 1)
         t.setStyle(TableStyle([('FONT', (0, 0), (-1, -1), 'Helvetica'),
                                ('BACKGROUND', (0, 0), (-1, 0), colors.green),
+                               ('BACKGROUND', (-1, 1), (-1, -1), colors.lightgreen),
                                ('FONTSIZE', (0, 0), (-1, -1), 8),
                                ('GRID', (0, 0), (-1, -1), 1, colors.black),
                                ('BOX', (0, 0), (-1, -1), 2, colors.black),
@@ -150,18 +151,20 @@ class PDFGen(object):
         return t
 
     def drawProcrank(self, data):
-        t = Table(data, None, None, None, 1, 1)
+        t = Table(data, None, None, None, 1, 1, 1)
         styles = []
         for i in range(len(data)):
             if i !=0 and i % 3 == 1:
-                styles.append(('SPAN', (0, i), (0, i + 2)))
+                styles.append(('BOX', (0, i), (0, i + 2), 1, colors.black))
+                styles.append(('BACKGROUND', (1, i+2), (-1, i+2), colors.lightgreen))
 
         t.setStyle(TableStyle([('FONT', (0, 0), (-1, -1), 'Helvetica'),
                                ('BACKGROUND', (0, 0), (-1, 0), colors.green),
                                ('FONTSIZE', (0, 0), (-1, -1), 8),
-                               ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                               ('GRID', (1, 0), (-1, -1), 1, colors.black),
                                ('BOX', (0, 0), (-1, -1), 2, colors.black),
                                ('BOX', (0, 0), (-1, 0), 2, colors.black),
+                               ('LINEBELOW', (0, 'splitlast'), (1, 'splitlast'), 1, colors.black),
                                ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
                                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                                ('TOPPADDING', (0, 0), (-1, -1), 1),
