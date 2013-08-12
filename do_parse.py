@@ -87,6 +87,7 @@ class MemInfoParser:
 
     def formatDate(self,date):
         dateColumn = date
+        del date[0]
         #0517-01:05:10 -> 05/17 01:05
         fdate = []
         for dc in dateColumn:
@@ -97,6 +98,7 @@ class MemInfoParser:
     def formatValue(self,value):
         # KB -> MB
         kbs = value
+        del kbs[0] # Delete header, ex: string 'Mem Free'
         mbs = []
         for kb in kbs:
             mb = int(kb)/1024
@@ -130,22 +132,7 @@ class MemInfoParser:
             self.vmallocAlloc.append(row[17])
             self.ION_Alloc.append(row[18])
         input_file.close()
-        
-        # Delete header: first column
-        del self.date[0]
-        del self.memFree[0]
-        del self.memTotal[0]
-        del self.cached[0]
-        del self.buffers[0]
-        del self.mlocked[0]
-        del self.anonPages[0]
-        del self.shmem[0]
-        del self.slab[0]
-        del self.kernelStack[0]
-        del self.pageTables[0]
-        del self.vmallocAlloc[0]
-        del self.ION_Alloc[0]
-        
+
         # KB -> MB
         self.date = self.formatDate(self.date)
         self.memTotal = self.formatValue(self.memTotal)
