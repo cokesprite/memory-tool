@@ -15,6 +15,48 @@ from matplotlib.pyplot import plot,savefig,legend
 from matplotlib.ticker import MultipleLocator, AutoLocator, FormatStrFormatter
 
 
+PROCS = ['com.htc.launcher', 'surfaceflinger', 'system_server', 'com.android.browser', 'android.process.acore',
+        'com.android.phone', 'com.android.systemui', 'com.htc.idlescreen.shortcut', 'com.android.chrome',
+        'com.android.htcdialer', 'com.htc.android.htcime']
+
+class TxtToCsv():
+    def __init__(self):
+        self.csvPath = sys.path[0] + '/' + 'procrank-parsed'
+        if os.path.isdir(self.csvPath) == 0:
+            os.mkdir(self.csvPath)
+
+    def findLogFile(self):
+        path = sys.path[0]
+        logfile = [item for item in os.listdir(path) if (item.endswith('.txt') and item[-12:] == 'procrank.txt')]
+        return logfile
+
+    def saveCsv(self, procName, data):
+        pn = procName + '.csv'
+        procCsv = self.csvPath + '/' + pn
+        csvfile = file(procCsv, 'wb')
+        writer = csv.writer(csvfile)
+        writer.writerow(['Count', 'RSS', 'PSS'])
+        writer.writerows(data)
+        csvfile.close()
+
+    def txt2csv(self, logfile):
+        filePath = logfile
+        fileObject = open(filePath, 'r').readlines()
+        for proc in PROCS:
+            data = []
+            for line in fileObject:
+                if (line[0:15]=="------ PROCRANK"):
+                    #------ PROCRANK (2013-05-17 02:50:39) ------
+                    date = line[17:36]
+                    column = []
+                    column.append(date)
+                if ((line.find(proc) != -1) and (line.find(':') == -1)):
+                    formated = line.split()
+                    column.append(formated[2][:-1])
+                    column.append(formated[3][:-1])
+                    data.append(column)
+            self.saveCsv(proc, data)
+
 class MemInfoParser:
     def __init__(self):
         self.path = sys.path[0] +'/'
@@ -57,7 +99,7 @@ class MemInfoParser:
         kbs = value
         mbs = []
         for kb in kbs:
-            mb = int(kb)/1000
+            mb = int(kb)/1024
             mbs.append(mb)
         return mbs
 
@@ -187,7 +229,6 @@ class ProcrankParser():
 
     def draw(self,file):
         datafile = self.path + file
-        print ('loading %s' % datafile)
         r = mlab.csv2rec(datafile)
         N = len(r)
         ind = np.arange(N)
@@ -221,11 +262,22 @@ def parseMemInfo():
         meminfo.parse_A_Group()
         meminfo.parse_B_Group()
 
+    print 'Parse MemInfo Done.'
+
 def parseProcrank():
+    # generate csv files.
+    tc = TxtToCsv()
+    lfs = tc.findLogFile()
+    for f in lfs:
+       tc.txt2csv(f)
+
+    # parse csv and generate graph automatically.
     p = ProcrankParser()
     csvfiles = p.findCsvFiles()
     for i in csvfiles:
         p.draw(i)
+
+    print 'Parse Procrank Done.'
 
 def main(argv):
     try:
@@ -249,3 +301,4 @@ def main(argv):
 
 if __name__ == "__main__":
     main(sys.argv)
+
