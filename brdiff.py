@@ -27,8 +27,9 @@ class Procrank(object):
         procrank = {}
         for line in data:
             formated = line.split()
-            proc.append(formated[-1])
-            procrank[formated[-1]]=[formated[0], formated[1][:-1], formated[2][:-1], formated[3][:-1], formated[4][:-1]]
+            if not formated[-1] in proc:
+                proc.append(formated[-1])
+                procrank[formated[-1]]=[formated[0], formated[1][:-1], formated[2][:-1], formated[3][:-1], formated[4][:-1]]
         return (proc, procrank)
 
 class InputInfo(object):
@@ -71,21 +72,19 @@ class Compare(object):
 
         meminfo = []
         if len(left.meminfoItem) > 0 and len(right.meminfoItem) > 0:
-            print "meminfo"
             meminfo.append(['Item', 'A: %s' % left.filePath, 'B: %s' % right.filePath, 'Diff: A-B'])
             for i in left.meminfoItem:
                 if right.meminfo.has_key(i):
                     rightValues = right.meminfo.pop(i)
-                    meminfo.append(['%s (KB)' % i, '%d' % (int(left.meminfo[i]) / 1000), '%d' % (int(rightValues) / 1000), '%d' % ((int(left.meminfo[i]) - int(rightValues)) / 1000)])
+                    meminfo.append([i, '%d KB' % int(left.meminfo[i]), '%d KB' % int(rightValues), '%d KB' % (int(left.meminfo[i]) - int(rightValues))])
                 else:
-                    meminfo.append(['%s (KB)' % i, '%d' % (int(left.meminfo[i]) / 1000), '-', '-'])
+                    meminfo.append([i, '%d KB' % int(left.meminfo[i]), '-', '-'])
             for i in right.meminfoItem:
                 if right.meminfo.has_key(i):
-                    meminfo.append(['%s (KB)' % i, '-', '%d' % (int(right.meminfo[i]) / 1000), '-'])
+                    meminfo.append([i, '-', '%d KB' % int(right.meminfo[i]), '-'])
 
         procrank = []
         if len(left.proc) > 0 and len(right.proc) > 0:
-            print "procrank"
             procrank.append(['cmdline', 'A: %s\nB: %s' % (left.filePath, right.filePath), 'PID', 'Vss (KB)', 'Rss (KB)', 'Pss (KB)', 'Uss (KB)'])
             for i in left.proc:
                 procrank.append([i, 'A'] + left.procrank[i])
@@ -93,10 +92,10 @@ class Compare(object):
                     rightValues = right.procrank.pop(i)
                     procrank.append([i, 'B'] + rightValues)
                     procrank.append(['', 'Diff: A-B', '-',
-                                    '%d' % (int(left.procrank[i][1][:-1]) - int(rightValues[1][:-1])),
-                                    '%d' % (int(left.procrank[i][2][:-1]) - int(rightValues[2][:-1])),
-                                    '%d' % (int(left.procrank[i][3][:-1]) - int(rightValues[3][:-1])),
-                                    '%d' % (int(left.procrank[i][4][:-1]) - int(rightValues[4][:-1])),
+                                    '%d' % (int(left.procrank[i][1]) - int(rightValues[1])),
+                                    '%d' % (int(left.procrank[i][2]) - int(rightValues[2])),
+                                    '%d' % (int(left.procrank[i][3]) - int(rightValues[3])),
+                                    '%d' % (int(left.procrank[i][4]) - int(rightValues[4])),
                                     ])
                 else:
                     procrank.append([i, 'B', '-', '-', '-', '-', '-'])
@@ -107,21 +106,25 @@ class Compare(object):
                     procrank.append([i, 'B'] + right.procrank[i])
                     procrank.append(['', 'Diff: A-B', '-', '-', '-', '-', '-'])
 
-        pdf.generate(meminfo, procrank, output)
+        pdf.generate(meminfo, procrank, left.filePath, right.filePath, output)
 
 class PDFGen(object):
-    Title = 'Bugreport Comparision - Meminfo and Procrank'
     Date = datetime.datetime.now().strftime("%Y-%m-%d")
+    FileLeft = None
+    FileRight = None
 
     (PAGE_WIDTH, PAGE_HEIGHT) = defaultPageSize
     Styles = getSampleStyleSheet()
 
     def drawCoverPage(self, canvas, doc):
+        title = 'Memory Compare'
         canvas.saveState()
         canvas.setFont('Helvetica-Bold', 16)
-        canvas.drawCentredString(self.PAGE_WIDTH / 2.0, self.PAGE_HEIGHT - 220, self.Title)
+        canvas.drawCentredString(self.PAGE_WIDTH / 2.0, self.PAGE_HEIGHT - 220, title)
         canvas.setFont('Helvetica', 12)
-        canvas.drawCentredString(self.PAGE_WIDTH / 2.0 + 100, self.PAGE_HEIGHT - 250, self.Date)
+        canvas.drawCentredString(self.PAGE_WIDTH / 2.0, self.PAGE_HEIGHT - 250, 'File A: ' + self.FileLeft)
+        canvas.drawCentredString(self.PAGE_WIDTH / 2.0, self.PAGE_HEIGHT - 280, 'File B: ' + self.FileRight)
+        canvas.drawCentredString(self.PAGE_WIDTH / 2.0 + 100, self.PAGE_HEIGHT - 310, self.Date)
         canvas.setFont('Helvetica', 9)
         canvas.drawString(inch, 0.75 * inch, "Page %d" % doc.page)
         canvas.restoreState()
@@ -167,12 +170,14 @@ class PDFGen(object):
                                ))
         return t
 
-    def generate(self, meminfo, procrank, output=None):
+    def generate(self, meminfo, procrank, left, right, output=None):
+        self.FileLeft = left
+        self.FileRight = right
         filePath = ''
         if output != None:
             filePath = output
         else:
-            filePath = 'Bugreport Comparision %s.pdf' % self.Date
+            filePath = 'Memory Compare %s.pdf' % self.Date
         doc = SimpleDocTemplate(filePath)
         style = self.Styles["Normal"]
         story = [Spacer(1, 1.7 * inch)]
@@ -190,18 +195,15 @@ class PDFGen(object):
             story.append(procrankTitle)
             procrankTable = self.drawProcrank(procrank)
             story.append(procrankTable)
-        #else:
-        #    procrankTitle = Paragraph('Fail to generate procrank comparisn! Procrank info is missing!', style)
-        #    story.append(procrankTitle)
 
         doc.build(story, onFirstPage=self.drawCoverPage, onLaterPages=self.drawContentPage)
 
 def _Main(argv):
     opt_parser = optparse.OptionParser("%prog [options] file1 file2")
     opt_parser.add_option('-m', '--meminfo', action='store_true', dest='meminfo', default=False,
-        help='Compare two meminfo files [invalid now]')
+        help='Compare two meminfo files')
     opt_parser.add_option('-p', '--procrank', action="store_true", dest="procrank", default=False,
-        help='Compare two procrank files [invalid now]')
+        help='Compare two procrank files')
     opt_parser.add_option('-b', '--bugreport', action="store_true", dest="bugreport", default=False,
         help='Compare two bugreport files')
     opt_parser.add_option('-o', '--output', dest='output',
