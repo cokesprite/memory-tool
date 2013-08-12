@@ -11,76 +11,120 @@ from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.units import inch
 from reportlab.rl_config import defaultPageSize
 
-class BRInfo(object):
+class Meminfo(object):
+    def fromData(self, data):
+        meminfoItem = []
+        meminfo = {}
+        for line in data:
+            formated = line.split()
+            meminfoItem.append(formated[0][:-1])
+            meminfo[formated[0][:-1]]=formated[1]
+        return (meminfoItem, meminfo)
+
+class Procrank(object):
+    def fromData(self, data):
+        proc = []
+        procrank = {}
+        for line in data:
+            formated = line.split()
+            if not formated[-1] in proc:
+                proc.append(formated[-1])
+                procrank[formated[-1]]=[formated[0], formated[1][:-1], formated[2][:-1], formated[3][:-1], formated[4][:-1]]
+        return (proc, procrank)
+
+class InputInfo(object):
 
     def __init__(self, filePath):
         self.filePath = filePath
-        self.meminfo = []
+        self.meminfo = {}
         self.procrank = {}
+        self.meminfoItem = []
         self.proc = []
-        self.parseBugReport()
 
-    def parseBugReport(self):
+    def parseMeminfo(self):
+        fileObject = open(self.filePath, 'r').read()
+        meminfo = Meminfo()
+        (self.meminfoItem, self.meminfo) = meminfo.fromData(fileObject.split('\n')[:-1])
+
+    def parseProcrank(self):
+        fileObject = open(self.filePath, 'r').read()
+        procrank = Procrank()
+        (self.proc, self.procrank) = procrank.fromData(fileObject.split('\n')[1:-5])
+
+    def parseBugreport(self):
         fileObject = open(self.filePath, 'r').read()
 
         meminfoStart = fileObject.find("------ MEMORY INFO")
-        for line in fileObject[meminfoStart:].split('\n')[1:45]:
-            formated = line.split()
-            self.meminfo.append((formated[0][:-1], formated[1]))
+        meminfoEnd = fileObject.find("------ CPU INFO")
+        meminfo = Meminfo()
+        (self.meminfoItem, self.meminfo) = meminfo.fromData(fileObject[meminfoStart:meminfoEnd].split('\n')[1:-2])
 
         procrankStart = fileObject.find("------ PROCRANK")
-        procrankEnd = fileObject.find("------   ------  ------")
-        for line in fileObject[procrankStart:procrankEnd].split('\n')[2:-1]:
-            formated = line.split()
-            self.proc.append(formated[-1])
-            self.procrank[formated[-1]]=formated[0:-1]
+        procrankEnd = fileObject.find("------ VIRTUAL MEMORY STATS")
+        if fileObject[procrankStart:procrankEnd].find("Permission denied") == -1:
+            procrank = Procrank()
+            (self.proc, self.procrank) = procrank.fromData(fileObject[procrankStart:procrankEnd].split('\n')[2:-7])
 
-class BRCompare(object):
+class Compare(object):
 
-    def execute(self, left, right):
-        meminfo = []
-        procrank = []
-        meminfo.append(['Item', 'A: %s' % left.filePath, 'B: %s' % right.filePath, 'Diff: A-B'])
-        procrank.append(['cmdline', 'A: %s\nB: %s' % (left.filePath, right.filePath), 'PID', 'Vss', 'Rss', 'Pss', 'Uss'])
-        for i, j in zip(left.meminfo, right.meminfo):
-            meminfo.append([i[0], i[1], j[1], '%d' % (int(i[1]) - int(j[1]))])
-
-        for i in left.proc:
-            procrank.append([i, 'A'] + left.procrank[i])
-            if right.procrank.has_key(i):
-                rightValues = right.procrank.pop(i)
-                procrank.append([i, 'B'] + rightValues)
-                procrank.append(['', 'Diff: A-B', '-',
-                                '%dK' % (int(left.procrank[i][1][:-1]) - int(rightValues[1][:-1])),
-                                '%dK' % (int(left.procrank[i][2][:-1]) - int(rightValues[2][:-1])),
-                                '%dK' % (int(left.procrank[i][3][:-1]) - int(rightValues[3][:-1])),
-                                '%dK' % (int(left.procrank[i][4][:-1]) - int(rightValues[4][:-1])),
-                                ])
-            else:
-                procrank.append([i, 'B', '-', '-', '-', '-', '-'])
-                procrank.append(['', 'Diff: A-B', '-', '-', '-', '-', '-'])
-        for i in right.proc:
-            if right.procrank.has_key(i):
-                procrank.append([i, 'A', '-', '-', '-', '-', '-'])
-                procrank.append([i, 'B'] + right.procrank[i])
-                procrank.append(['', 'Diff: A-B', '-', '-', '-', '-', '-'])
-
+    def execute(self, left, right, output=None):
         pdf = PDFGen()
-        pdf.generate(meminfo, procrank)
+
+        meminfo = []
+        if len(left.meminfoItem) > 0 and len(right.meminfoItem) > 0:
+            meminfo.append(['Item', 'A: %s' % left.filePath, 'B: %s' % right.filePath, 'Diff: A-B'])
+            for i in left.meminfoItem:
+                if right.meminfo.has_key(i):
+                    rightValues = right.meminfo.pop(i)
+                    meminfo.append([i, '%d KB' % int(left.meminfo[i]), '%d KB' % int(rightValues), '%d KB' % (int(left.meminfo[i]) - int(rightValues))])
+                else:
+                    meminfo.append([i, '%d KB' % int(left.meminfo[i]), '-', '-'])
+            for i in right.meminfoItem:
+                if right.meminfo.has_key(i):
+                    meminfo.append([i, '-', '%d KB' % int(right.meminfo[i]), '-'])
+
+        procrank = []
+        if len(left.proc) > 0 and len(right.proc) > 0:
+            procrank.append(['cmdline', 'A: %s\nB: %s' % (left.filePath, right.filePath), 'PID', 'Vss (KB)', 'Rss (KB)', 'Pss (KB)', 'Uss (KB)'])
+            for i in left.proc:
+                procrank.append([i, 'A'] + left.procrank[i])
+                if right.procrank.has_key(i):
+                    rightValues = right.procrank.pop(i)
+                    procrank.append([i, 'B'] + rightValues)
+                    procrank.append(['', 'Diff: A-B', '-',
+                                    '%d' % (int(left.procrank[i][1]) - int(rightValues[1])),
+                                    '%d' % (int(left.procrank[i][2]) - int(rightValues[2])),
+                                    '%d' % (int(left.procrank[i][3]) - int(rightValues[3])),
+                                    '%d' % (int(left.procrank[i][4]) - int(rightValues[4])),
+                                    ])
+                else:
+                    procrank.append([i, 'B', '-', '-', '-', '-', '-'])
+                    procrank.append(['', 'Diff: A-B', '-', '-', '-', '-', '-'])
+            for i in right.proc:
+                if right.procrank.has_key(i):
+                    procrank.append([i, 'A', '-', '-', '-', '-', '-'])
+                    procrank.append([i, 'B'] + right.procrank[i])
+                    procrank.append(['', 'Diff: A-B', '-', '-', '-', '-', '-'])
+
+        pdf.generate(meminfo, procrank, left.filePath, right.filePath, output)
 
 class PDFGen(object):
-    Title = 'Bugreport Comparision - Meminfo and Procrank'
     Date = datetime.datetime.now().strftime("%Y-%m-%d")
+    FileLeft = None
+    FileRight = None
 
     (PAGE_WIDTH, PAGE_HEIGHT) = defaultPageSize
     Styles = getSampleStyleSheet()
 
     def drawCoverPage(self, canvas, doc):
+        title = 'Memory Compare'
         canvas.saveState()
         canvas.setFont('Helvetica-Bold', 16)
-        canvas.drawCentredString(self.PAGE_WIDTH / 2.0, self.PAGE_HEIGHT - 220, self.Title)
+        canvas.drawCentredString(self.PAGE_WIDTH / 2.0, self.PAGE_HEIGHT - 220, title)
         canvas.setFont('Helvetica', 12)
-        canvas.drawCentredString(self.PAGE_WIDTH / 2.0 + 100, self.PAGE_HEIGHT - 250, self.Date)
+        canvas.drawCentredString(self.PAGE_WIDTH / 2.0, self.PAGE_HEIGHT - 250, 'File A: ' + self.FileLeft)
+        canvas.drawCentredString(self.PAGE_WIDTH / 2.0, self.PAGE_HEIGHT - 280, 'File B: ' + self.FileRight)
+        canvas.drawCentredString(self.PAGE_WIDTH / 2.0 + 100, self.PAGE_HEIGHT - 310, self.Date)
         canvas.setFont('Helvetica', 9)
         canvas.drawString(inch, 0.75 * inch, "Page %d" % doc.page)
         canvas.restoreState()
@@ -126,25 +170,27 @@ class PDFGen(object):
                                ))
         return t
 
-    def generate(self, meminfo=None, procrank=None, output=None):
+    def generate(self, meminfo, procrank, left, right, output=None):
+        self.FileLeft = left
+        self.FileRight = right
         filePath = ''
         if output != None:
             filePath = output
         else:
-            filePath = 'Bugreport Comparision %s.pdf' % self.Date
+            filePath = 'Memory Compare %s.pdf' % self.Date
         doc = SimpleDocTemplate(filePath)
         style = self.Styles["Normal"]
         story = [Spacer(1, 1.7 * inch)]
         story.append(PageBreak())
 
-        if meminfo:
+        if len(meminfo) > 0:
             meminfoTitle = Paragraph('Meminfo Comparision', style)
             story.append(meminfoTitle)
             meminfoTable = self.drawMeminfo(meminfo)
             story.append(meminfoTable)
             story.append(PageBreak())
 
-        if procrank:
+        if len(procrank) > 0:
             procrankTitle = Paragraph('Procrank Comparision', style)
             story.append(procrankTitle)
             procrankTable = self.drawProcrank(procrank)
@@ -154,18 +200,37 @@ class PDFGen(object):
 
 def _Main(argv):
     opt_parser = optparse.OptionParser("%prog [options] file1 file2")
-    opt_parser.add_option('-m', '--meminfo', action="store_true", dest="meminfo",
-        help="Compare meminfo in two bugreport logs")
-    opt_parser.add_option('-p', '--procrank', action="store_true", dest="procrank",
-        help="Compare procrank in two bugreport logs")
+    opt_parser.add_option('-m', '--meminfo', action='store_true', dest='meminfo', default=False,
+        help='Compare two meminfo files')
+    opt_parser.add_option('-p', '--procrank', action="store_true", dest="procrank", default=False,
+        help='Compare two procrank files')
+    opt_parser.add_option('-b', '--bugreport', action="store_true", dest="bugreport", default=False,
+        help='Compare two bugreport files')
+    opt_parser.add_option('-o', '--output', dest='output',
+        help='Use <FILE> to store the generated report', metavar='FILE')
     (opts, args) = opt_parser.parse_args(argv)
+    if (opts.meminfo + opts.procrank + opts.bugreport) > 1:
+        opt_parser.error("options -m, -p and -b are mutually exclusive")
+    if (opts.meminfo + opts.procrank + opts.bugreport) == 0:
+        opts.bugreport = True
 
     if len(args) != 2:
         opt_parser.print_help()
         sys.exit(1)
     else:
-        compare = BRCompare()
-        compare.execute(BRInfo(args[0]), BRInfo(args[1]))
+        compare = Compare()
+        left = InputInfo(args[0])
+        right = InputInfo(args[1])
+        if opts.bugreport:
+            left.parseBugreport()
+            right.parseBugreport()
+        if opts.meminfo:
+            left.parseMeminfo()
+            right.parseMeminfo()
+        if opts.procrank:
+            left.parseProcrank()
+            right.parseProcrank()
+        compare.execute(left, right, opts.output)
 
 if __name__ == '__main__':
     _Main(sys.argv[1:])
