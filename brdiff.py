@@ -119,90 +119,89 @@ class XLSGen(object):
 
     def generate(self, meminfo, procrank, fileLeft, fileRight, output=None):
         xlsBook = Workbook()
-        sheetMeminfo = xlsBook.add_sheet('MEMINFO')
-        for rowIndex in range(len(meminfo)):
-            for colIndex in range(len(meminfo[0])):
-                borders = 'borders: '
-                headers = ''
-                diffs = ''
-                align = ''
-                if rowIndex == 0:
-                    headers = 'pattern: pattern solid, fore_colour green;'
-                    borders = borders + self.VMinBorders
-                else:
-                    if rowIndex == (len(meminfo) - 1):
-                        borders = borders + self.VMaxBorders
+        if len(meminfo) != 0:
+            sheetMeminfo = xlsBook.add_sheet('MEMINFO')
+            for rowIndex in range(len(meminfo)):
+                for colIndex in range(len(meminfo[0])):
+                    borders = 'borders: '
+                    headers = ''
+                    diffs = ''
+                    align = ''
+                    if rowIndex == 0:
+                        headers = 'pattern: pattern solid, fore_colour green;'
+                        borders = borders + self.VMinBorders
                     else:
-                        borders = borders + self.VMidBorders
-                if colIndex == 0:
-                    borders = borders + self.HMinBorders
-                else:
-                    align = 'alignment: horizontal right;'
-                    if colIndex == (len(meminfo[0]) - 1):
-                        diffs = 'pattern: pattern solid, fore_colour light_green;'
-                        borders = borders + self.HMaxBorders
-                    else:
-                        borders = borders + self.HMidBorders
-                borders = borders + ';'
-                xf = easyxf(borders + diffs + headers + align)
-                sheetMeminfo.write(rowIndex + 1, colIndex + 1, meminfo[rowIndex][colIndex], xf)
-
-        sheetMeminfo.col(1).width = 5000
-        sheetMeminfo.col(2).width = 5000
-        sheetMeminfo.col(3).width = 5000
-        sheetMeminfo.col(4).width = 5000
-
-        sheetProcrank = xlsBook.add_sheet('PROCRANK')
-        for rowIndex in range(len(procrank)):
-            for colIndex in range(len(procrank[0])):
-                borders = 'borders: '
-                headers = ''
-                diffs = ''
-                align = ''
-                if rowIndex == 0:
-                    headers = 'pattern: pattern solid, fore_colour green;'
-                    borders = borders + self.VMinBorders
-                else:
-                    if rowIndex == (len(procrank) - 1) and colIndex != 0:
-                        borders = borders + self.VMaxBorders
-                    else:
-                        if colIndex != 0:
-                            borders = borders + self.VMidBorders
-                if colIndex == 0:
-                    if rowIndex % 3 == 1 and rowIndex != (len(procrank) - 1):
-                        borders = 'borders: top thin,'
-                    else:
-                        if rowIndex and rowIndex % 3 == 0 and rowIndex != (len(procrank) - 1):
-                            borders = 'borders: bottom thin,'
+                        if rowIndex == (len(meminfo) - 1):
+                            borders = borders + self.VMaxBorders
                         else:
-                            if rowIndex and rowIndex != (len(procrank) - 1):
-                                borders = 'borders: '
-                            else:
-                                if rowIndex == 0:
-                                    borders = 'borders: top medium, bottom medium,'
-                                else:
-                                    borders = 'borders: bottom medium,'
-                    borders = borders + self.HMinBorders
-                else:
-                    align = 'alignment: horizontal right;'
-                    if rowIndex and rowIndex % 3 ==0:
-                        diffs = 'pattern: pattern solid, fore_colour light_green;'
-                    if colIndex == (len(procrank[0]) - 1):
-                        borders = borders + self.HMaxBorders
+                            borders = borders + self.VMidBorders
+                    if colIndex == 0:
+                        borders = borders + self.HMinBorders
                     else:
-                        borders = borders + self.HMidBorders
-                borders = borders + ';'
-                print borders
-                xf = easyxf(borders + diffs + headers + align)
-                sheetProcrank.write(rowIndex + 1, colIndex + 1, procrank[rowIndex][colIndex], xf)
+                        align = 'alignment: horizontal right;'
+                        if colIndex == (len(meminfo[0]) - 1):
+                            diffs = 'pattern: pattern solid, fore_colour light_green;'
+                            borders = borders + self.HMaxBorders
+                        else:
+                            borders = borders + self.HMidBorders
+                    borders = borders + ';'
+                    xf = easyxf(borders + diffs + headers + align)
+                    sheetMeminfo.write(rowIndex + 1, colIndex + 1, meminfo[rowIndex][colIndex], xf)
+            sheetMeminfo.col(1).width = 5000
+            sheetMeminfo.col(2).width = 5000
+            sheetMeminfo.col(3).width = 5000
+            sheetMeminfo.col(4).width = 5000
 
-        sheetProcrank.col(1).width = 7000
-        sheetProcrank.col(2).width = 3000
-        sheetProcrank.col(3).width = 4000
-        sheetProcrank.col(4).width = 4000
-        sheetProcrank.col(5).width = 4000
-        sheetProcrank.col(6).width = 4000
-        sheetProcrank.col(7).width = 4000
+        if len(procrank) != 0:
+            sheetProcrank = xlsBook.add_sheet('PROCRANK')
+            for rowIndex in range(len(procrank)):
+                for colIndex in range(len(procrank[0])):
+                    borders = 'borders: '
+                    headers = ''
+                    diffs = ''
+                    align = ''
+                    if rowIndex == 0:
+                        headers = 'pattern: pattern solid, fore_colour green;'
+                        borders = borders + self.VMinBorders
+                    else:
+                        if rowIndex == (len(procrank) - 1) and colIndex != 0:
+                            borders = borders + self.VMaxBorders
+                        else:
+                            if colIndex != 0:
+                                borders = borders + self.VMidBorders
+                    if colIndex == 0:
+                        if rowIndex % 3 == 1 and rowIndex != (len(procrank) - 1):
+                            borders = 'borders: top thin,'
+                        else:
+                            if rowIndex and rowIndex % 3 == 0 and rowIndex != (len(procrank) - 1):
+                                borders = 'borders: bottom thin,'
+                            else:
+                                if rowIndex and rowIndex != (len(procrank) - 1):
+                                    borders = 'borders: '
+                                else:
+                                    if rowIndex == 0:
+                                        borders = 'borders: top medium, bottom medium,'
+                                    else:
+                                        borders = 'borders: bottom medium,'
+                        borders = borders + self.HMinBorders
+                    else:
+                        align = 'alignment: horizontal right;'
+                        if rowIndex and rowIndex % 3 ==0:
+                            diffs = 'pattern: pattern solid, fore_colour light_green;'
+                        if colIndex == (len(procrank[0]) - 1):
+                            borders = borders + self.HMaxBorders
+                        else:
+                            borders = borders + self.HMidBorders
+                    borders = borders + ';'
+                    xf = easyxf(borders + diffs + headers + align)
+                    sheetProcrank.write(rowIndex + 1, colIndex + 1, procrank[rowIndex][colIndex], xf)
+            sheetProcrank.col(1).width = 7000
+            sheetProcrank.col(2).width = 3000
+            sheetProcrank.col(3).width = 4000
+            sheetProcrank.col(4).width = 4000
+            sheetProcrank.col(5).width = 4000
+            sheetProcrank.col(6).width = 4000
+            sheetProcrank.col(7).width = 4000
 
         save = None
         if output == None:
@@ -212,7 +211,6 @@ class XLSGen(object):
                 save = output[:-4]
             else:
                 save = output
-        print save
         xlsBook.save(save + '.xls')
 
 class PDFGen(object):
