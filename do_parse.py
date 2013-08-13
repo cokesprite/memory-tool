@@ -19,47 +19,11 @@ PROCS = ['com.htc.launcher', 'surfaceflinger', 'system_server', 'com.android.bro
         'com.android.phone', 'com.android.systemui', 'com.htc.idlescreen.shortcut', 'com.android.chrome',
         'com.android.htcdialer', 'com.htc.android.htcime']
 
-class TxtToCsv():
-    def __init__(self):
-        self.csvPath = sys.path[0] + '/' + 'procrank-parsed'
-        if os.path.isdir(self.csvPath) == 0:
-            os.mkdir(self.csvPath)
-
-    def findLogFile(self):
-        path = sys.path[0]
-        logfile = [item for item in os.listdir(path) if (item.endswith('.txt') and item[-12:] == 'procrank.txt')]
-        return logfile
-
-    def saveCsv(self, procName, data):
-        pn = procName + '.csv'
-        procCsv = self.csvPath + '/' + pn
-        csvfile = file(procCsv, 'wb')
-        writer = csv.writer(csvfile)
-        writer.writerow(['Count', 'RSS', 'PSS'])
-        writer.writerows(data)
-        csvfile.close()
-
-    def txt2csv(self, logfile):
-        filePath = logfile
-        fileObject = open(filePath, 'r').readlines()
-        for proc in PROCS:
-            data = []
-            for line in fileObject:
-                if (line[0:15]=="------ PROCRANK"):
-                    #------ PROCRANK (2013-05-17 02:50:39) ------
-                    date = line[17:36]
-                    column = []
-                    column.append(date)
-                if ((line.find(proc) != -1) and (line.find(':') == -1)):
-                    formated = line.split()
-                    column.append(formated[2][:-1])
-                    column.append(formated[3][:-1])
-                    data.append(column)
-            self.saveCsv(proc, data)
-
 class MemInfoParser:
     def __init__(self):
-        self.path = sys.path[0] +'/'
+        self.picPath = sys.path[0] +'/' + 'meminfo-parsed' + '/'
+        if os.path.isdir(self.picPath) == 0:
+            os.mkdir(self.picPath)
         self.fileName = ''
         self.date = []
         self.memTotal = []
@@ -107,7 +71,7 @@ class MemInfoParser:
 
     def savePic(self, name='test'):
         n = name
-        plt.savefig(n + '.png', dpi=200, facecolor='w', edgecolor='w',
+        plt.savefig(self.picPath + n + '.png', dpi=200, facecolor='w', edgecolor='w',
                 orientation='portrait', papertype=None, format=None,
                 transparent=False, bbox_inches=None, pad_inches=0.1)
         #plt.show
@@ -157,11 +121,10 @@ class MemInfoParser:
             return self.date[thisind]
 
         fig = plt.figure(dpi=100)
-        fig.canvas.set_window_title('Meminfo analysis')
         ax = fig.add_subplot(111)
         ax.plot(ind,self.memTotal,'r-',self.memFree,'g-',self.cached,'c-')
         ax.grid(True)
-        ax.set_title('Meminfo analysis -- ' + self.setPlotTitle(self.file))
+        ax.set_title('Meminfo analysis -- ' + self.setPlotTitle(self.file), fontsize='large')
         ax.set_xlabel('Time')
         ax.set_ylabel('Mem Info(MiB)')
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_date))
@@ -179,12 +142,11 @@ class MemInfoParser:
             return self.date[thisind]
 
         fig = plt.figure(dpi=100, figsize=(20, 20))
-        fig.canvas.set_window_title('Meminfo analysis')
-
         ax = fig.add_subplot(211)
-        ax.plot(ind,self.buffers,'g-',self.mlocked,'0.4', self.shmem,'c-',self.slab,'k-',self.kernelStack,'r-',self.pageTables,'y-',self.vmallocAlloc,'b-',self.ION_Alloc,'m-')
+        ax.plot(ind,self.buffers,'g-',self.mlocked,'0.4', self.shmem,'c-',self.slab,'k-',self.kernelStack,'r-',
+                self.pageTables,'y-',self.vmallocAlloc,'b-',self.ION_Alloc,'m-')
         ax.grid(True)
-        ax.set_title('Meminfo analysis -- ' + self.setPlotTitle(self.file))
+        ax.set_title('Meminfo analysis -- ' + self.setPlotTitle(self.file), fontsize='large')
         ax.set_xlabel('Time')
         ax.set_ylabel('Mem Info(MiB)')
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_date))
@@ -202,44 +164,78 @@ class MemInfoParser:
 
 class ProcrankParser():
     def __init__(self):
-        self.path = sys.path[0] +'/'+ 'procrank-parsed' + '/'
+        self.csvPath = sys.path[0] + '/' + 'procrank-parsed' + '/' + 'csv'
+        if os.path.isdir(self.csvPath) == 0:
+            os.makedirs(self.csvPath)
+        self.picPath = sys.path[0] +'/'+ 'procrank-parsed' + '/'
 
-    def findCsvFiles(self):
-        path = self.path
-        csvfiles = [item for item in os.listdir(path) if item.endswith('.csv')]
-        return csvfiles
+    def findLogFiles(self):
+        path = sys.path[0]
+        logfile = [item for item in os.listdir(path) if (item.endswith('.txt') and item[-12:] == 'procrank.txt')]
+        return logfile
 
-    def setPlotTitle(self,fileName):
-        name = fileName[4:]
-        n = name[:-4]
-        return n
+    def parseLogFile(self, logfile):
+        filePath = logfile
+        fileObject = open(filePath, 'r').readlines()
+        for proc in PROCS:
+            data = []
+            date = []
+            rss = []
+            pss = []
+            for line in fileObject:
+                if (line[0:15]=="------ PROCRANK"):
+                    #------ PROCRANK (2013-05-17 02:50:39) ------ -> 05-17 02:50
+                    date = line[22:33]
+                    column = []
+                    column.append(date)
+                if ((line.find(proc) != -1) and (line.find(':') == -1)):
+                    formated = line.split()
+                    date.append(date)
+                    rss.append(formated[2][:-1])
+                    pss.append(formated[3][:-1])
 
-    def draw(self,file):
-        datafile = self.path + file
-        r = mlab.csv2rec(datafile)
-        N = len(r)
+                    column.append(formated[2][:-1])
+                    column.append(formated[3][:-1])
+                    data.append(column)
+
+            self.draw(proc, date, rss, pss)
+            self.saveCsv(proc, data)
+
+    def draw(self,proc,date,rss,pss):
+        file = proc
+        d = date
+        r = rss
+        p = pss
+        N = len(d)
         ind = np.arange(N)
 
         def format_date(x, pos=None):
             thisind = np.clip(int(x+0.5), 0, N-1)
-            return r.count[thisind].strftime('%m-%d %H:%M:%S')
+            return d[thisind]
 
-        fig = plt.figure(dpi=100, figsize=(15, 10))
-        fig.canvas.set_window_title(file)
+        fig = plt.figure(dpi=100)
         ax = fig.add_subplot(111)
-        ax.plot(ind, r.rss, 'g-', r.pss, 'r-',)
+        ax.plot(ind, r, 'g-', p, 'r-',)
         ax.grid(True)
-        ax.set_title('Procrank analysis -- ' + self.setPlotTitle(file), fontsize = 'medium')
+        ax.set_title('Procrank analysis -- ' + file, fontsize='large')
         ax.set_xlabel('Time')
         ax.set_ylabel('Mem(kB)')
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_date))
         legend(('RSS',"PSS"),0)
         fig.autofmt_xdate()
 
-        plt.savefig(self.path + file  + '.png', dpi=200, facecolor='w', edgecolor='w',
+        plt.savefig(self.picPath + file  + '.png', dpi=200, facecolor='w', edgecolor='w',
                 orientation='portrait', papertype=None, format=None,
                 transparent=False, bbox_inches=None, pad_inches=0.1)
 
+    def saveCsv(self, procName, data):
+        pn = procName + '.csv'
+        procCsv = self.csvPath + '/' + pn
+        csvfile = file(procCsv, 'wb')
+        writer = csv.writer(csvfile)
+        writer.writerow(['Count', 'RSS', 'PSS'])
+        writer.writerows(data)
+        csvfile.close()
 
 def parseMemInfo():
     meminfo = MemInfoParser()
@@ -249,22 +245,16 @@ def parseMemInfo():
         meminfo.parse_A_Group()
         meminfo.parse_B_Group()
 
-    print 'Parse MemInfo Done.'
+    print '\nParse MemInfo Done.'
 
 def parseProcrank():
-    # generate csv files.
-    tc = TxtToCsv()
-    lfs = tc.findLogFile()
-    for f in lfs:
-       tc.txt2csv(f)
-
-    # parse csv and generate graph automatically.
+    # Generate graph automatically and save csv file.
     p = ProcrankParser()
-    csvfiles = p.findCsvFiles()
-    for i in csvfiles:
-        p.draw(i)
+    lfs = p.findLogFiles()
+    for f in lfs:
+       p.parseLogFile(f)
 
-    print 'Parse Procrank Done.'
+    print '\nParse Procrank Done.'
 
 def main(argv):
     try:
