@@ -17,6 +17,7 @@ from matplotlib.ticker import MultipleLocator, AutoLocator, FormatStrFormatter
 
 PROCS = ['com.htc.launcher', 'surfaceflinger', 'system_server', 'com.android.browser', 'android.process.acore',
         'com.android.phone', 'com.android.systemui', 'com.htc.idlescreen.shortcut', 'com.android.chrome',
+        'com.android.launcher', 'com.android.chrome',
         'com.android.htcdialer', 'com.htc.android.htcime']
 
 class MemInfoParser:
@@ -75,9 +76,9 @@ class MemInfoParser:
                 orientation='portrait', papertype=None, format=None,
                 transparent=False, bbox_inches=None, pad_inches=0.1)
         #plt.show
-        
+
     def readData(self, logfile):
-        self.file = logfile     
+        self.file = logfile
         input_file = open(self.file, "rb")
         spamreader = csv.reader(input_file)
         for row in spamreader:
@@ -185,12 +186,12 @@ class ProcrankParser():
             for line in fileObject:
                 if (line[0:15]=="------ PROCRANK"):
                     #------ PROCRANK (2013-05-17 02:50:39) ------ -> 05-17 02:50
-                    date = line[22:33]
+                    tdate = line[22:33]
                     column = []
-                    column.append(date)
+                    column.append(tdate)
                 if ((line.find(proc) != -1) and (line.find(':') == -1)):
                     formated = line.split()
-                    date.append(date)
+                    date.append(tdate)
                     rss.append(formated[2][:-1])
                     pss.append(formated[3][:-1])
 
@@ -198,8 +199,9 @@ class ProcrankParser():
                     column.append(formated[3][:-1])
                     data.append(column)
 
-            self.draw(proc, date, rss, pss)
-            self.saveCsv(proc, data)
+            if len(rss) != 0 and len(pss) != 0:
+                self.draw(proc, date, rss, pss)
+                self.saveCsv(proc, data)
 
     def draw(self,proc,date,rss,pss):
         file = proc
