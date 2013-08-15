@@ -1,9 +1,16 @@
 import re
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
+import time
+import datetime
 
-from matplotlib.pyplot import plot,savefig,legend
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, PageBreak
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.charts.lineplots import GridLinePlot, LinePlot, sample2
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.rl_config import defaultPageSize
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.graphics.charts.axes import NormalDateXValueAxis, XValueAxis
+from reportlab.graphics.widgets.markers import makeMarker
 
 class Procrank(object):
     def __init__(self, filePath):
@@ -20,7 +27,7 @@ class Procrank(object):
         chunks = fileObject.split('------ PROCRANK')
         for chunk in chunks[1:]:
             lines = chunk.split('\n')
-            date = re.search('\d\d-\d\d \d\d:\d\d:\d\d', lines[0])
+            date = re.search('\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d', lines[0])
             date = date.group()
             for line in lines[2:-5]:
                 formated = line.split()
@@ -30,90 +37,102 @@ class Procrank(object):
                     self.procrank[formated[-1]] = proc
                 else:
                     self.procrank[formated[-1]] = [formated[1:-1] + [date]]
-        for key in self.procrank.keys():
-            pAverage = 0
-            pPeak = 0
-            rAverage = 0
-            rPeak = 0
-            values = self.procrank[key]
-            for value in values:
-                pAverage = pAverage + int(value[2][:-1]) # value[2] is Pss, [:-1] remove tailed 'K'
-                if pPeak < int(value[2][:-1]):
-                    pPeak = int(value[2][:-1])
-                rAverage = rAverage + int(value[1][:-1]) # value[1] is Rss, [:-1] remove tailed 'K'
-                if rPeak < int(value[1][:-1]):
-                    rPeak = int(value[1][:-1])
-            pAverage = pAverage / len(values)
-            rAverage = rAverage / len(values)
-            self.pssAverage[key] = pAverage
-            self.pssPeak[key] = pPeak
-            self.rssAverage[key] = rAverage
-            self.rssPeak[key] = rPeak
 
     def topProcs(self):
-        procs = []
-        sortedAverage = sorted(self.pssAverage.iteritems(), key=lambda (k,v): (v,k), reverse=True)
-        for proc in sortedAverage[:20]:
-            procs.append(proc[0])
-        return procs
+        return sorted(self.procrank.keys(), key=lambda proc: reduce(lambda x, y: x + y, [int(value[2][:-1]) for value in self.procrank[proc]]) / len(self.procrank[proc]), reverse=True)[:20]
 
     def hotProcs(self):
         return ['com.htc.launcher', 'surfaceflinger', 'system_server', 'com.android.browser', 'android.process.acore',
                 'com.android.phone', 'com.android.systemui', 'com.htc.idlescreen.shortcut', 'com.android.chrome',
                 'com.android.launcher', 'com.android.htcdialer', 'com.htc.android.htcime']
 
-    def getProcRecords(self, proc):
-        vss = []
-        rss = []
-        pss = []
-        uss = []
-        date = []
-        if self.procrank.has_key(proc):
-            records = self.procrank[proc]
-            for record in records:
-                vss.append(record[0][:-1])
-                rss.append(record[1][:-1])
-                pss.append(record[2][:-1])
-                uss.append(record[3][:-1])
-                date.append(record[4][:-3])
-        else:
-            print 'Error! There is no such process.'
-        return (vss, rss, pss, uss, date)
+    def drawing(self, proc):
+        dates = map(lambda tstring: time.mktime(time.strptime(tstring, "%Y-%m-%d %H:%M:%S")), [value[4] for value in self.procrank[proc]])
+        data = [
+            zip(dates, [int(value[1][:-1]) for value in self.procrank[proc]]),
+            zip(dates, [int(value[2][:-1]) for value in self.procrank[proc]]),
+            ]
 
-    def draw(self, proc):
-        if self.procrank.has_key(proc):
-            (vss, rss, pss, uss, date) = self.getProcRecords(proc)
-            d = date
-            r = rss
-            p = pss
-            N = len(d)
-            ind = np.arange(N)
+        drawing = Drawing(500, 300)
 
-            def format_date(x, pos = None):
-                thisind = np.clip(int(x + 0.5), 0, N - 1)
-                return d[thisind]
+        lp = GridLinePlot()
+        lp.x = 50
+        lp.y = 50
+        lp.height = 225
+        lp.width = 425
+        lp.data = data
+        lp.joinedLines = 1
+        lp.strokeColor = colors.black
 
-            fig = plt.figure(dpi=100)
-            ax = fig.add_subplot(111)
-            ax.plot(ind, r, 'g-', p, 'r-',)
-            ax.grid(True)
-            ax.set_title('Procrank analysis -- ' + proc, fontsize='large')
-            ax.set_xlabel('Time')
-            ax.set_ylabel('Mem(kB)')
-            ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_date))
-            legend(('RSS',"PSS"),0)
-            fig.autofmt_xdate()
-            print 'heihei'
-            plt.savefig('./' + proc + '.png', dpi=200, facecolor='w', edgecolor='w',
-                    orientation='portrait', papertype=None, format=None,
-                    transparent=False, bbox_inches=None, pad_inches=0.1)
+        start = dates[0]
+        end = dates[-1]
+        delta = (end - start) / 3
+        lp.xValueAxis = XValueAxis()
+        lp.xValueAxis.valueMin = start
+        lp.xValueAxis.valueMax = end
+        lp.xValueAxis.valueSteps = [start, start + delta, start + 2 * delta, end]
+        lp.xValueAxis.labelTextFormat = lambda seconds: time.strftime("%d/%m %H:%M", time.localtime(seconds))
+        lp.xValueAxis.labels.angle = 35
+        lp.xValueAxis.labels.dy = -10
+        lp.xValueAxis.labels.boxAnchor = 'e'
+        lp.yValueAxis.labelTextFormat = lambda value: '%d MB' % (int(value) / 1000)
+
+        drawing.add(lp)
+
+        return drawing
+
+
+class PDFGen(object):
+    Date = datetime.datetime.now().strftime("%Y-%m-%d")
+    FileLeft = None
+    FileRight = None
+
+    (PAGE_WIDTH, PAGE_HEIGHT) = defaultPageSize
+    Styles = getSampleStyleSheet()
+
+    def drawCoverPage(self, canvas, doc):
+        title = 'Memory Analysis'
+        canvas.saveState()
+        canvas.setFont('Helvetica-Bold', 16)
+        canvas.drawCentredString(self.PAGE_WIDTH / 2.0, self.PAGE_HEIGHT - 220, title)
+        canvas.setFont('Helvetica', 12)
+        canvas.drawCentredString(self.PAGE_WIDTH / 2.0, self.PAGE_HEIGHT - 250, 'File A: ')
+        canvas.drawCentredString(self.PAGE_WIDTH / 2.0, self.PAGE_HEIGHT - 280, 'File B: ')
+        canvas.drawCentredString(self.PAGE_WIDTH / 2.0 + 100, self.PAGE_HEIGHT - 310, self.Date)
+        canvas.setFont('Helvetica', 9)
+        canvas.drawString(inch, 0.75 * inch, "Page %d" % doc.page)
+        canvas.restoreState()
+
+    def drawContentPage(self, canvas, doc):
+        canvas.saveState()
+        canvas.setFont('Helvetica', 9)
+        canvas.drawString(inch, 0.75 * inch, "Page %d" % doc.page)
+        canvas.restoreState()
+
+    def generate(self, meminfo, procrank, fileLeft, fileRight, output=None):
+        doc = SimpleDocTemplate('haha.pdf')
+        style = self.Styles["Normal"]
+        story = [Spacer(1, 1.7 * inch)]
+        story.append(PageBreak())
+        story.append(Paragraph('system_server in procrank memlog', style))
+        story.append(procrank.drawing('system_server'))
+        story.append(procrank.drawing('system_server'))
+        story.append(procrank.drawing('system_server'))
+        story.append(procrank.drawing('system_server'))
+        story.append(procrank.drawing('system_server'))
+        story.append(procrank.drawing('system_server'))
+        story.append(procrank.drawing('system_server'))
+        doc.build(story, onFirstPage=self.drawCoverPage, onLaterPages=self.drawContentPage)
 
 def _Main():
+    print '---> Start parsing ...'
     procrank = Procrank('procrank')
-    for proc in procrank.topProcs():
-        procrank.draw(proc)
-    for proc in procrank.hotProcs():
-        procrank.draw(proc)
+    print '---> Done'
+
+    print '---> Start generate PDF ...'
+    pdf = PDFGen()
+    pdf.generate(None, procrank, None, None)
+    print '---> Done'
 
 if __name__ == '__main__':
     _Main()
