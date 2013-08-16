@@ -115,7 +115,6 @@ class PDFGen(object):
         legend.x = 20
         legend.y = 5
         legend.colorNamePairs = [(self.Color[i], names[i]) for i in range(len(names))]
-        print legend.colorNamePairs
         legend.fontName       = 'Helvetica'
         legend.fontSize       = 7
         legend.dxTextSpace    = 5
