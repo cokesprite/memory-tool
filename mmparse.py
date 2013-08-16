@@ -4,13 +4,13 @@ import datetime
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, PageBreak
 from reportlab.graphics.shapes import Drawing
-from reportlab.graphics.charts.lineplots import GridLinePlot, LinePlot, sample2
+from reportlab.graphics.charts.lineplots import GridLinePlot
+from reportlab.graphics.charts.legends import Legend
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.rl_config import defaultPageSize
 from reportlab.lib.units import inch
 from reportlab.lib import colors
-from reportlab.graphics.charts.axes import NormalDateXValueAxis, XValueAxis
-from reportlab.graphics.widgets.markers import makeMarker
+from reportlab.graphics.charts.axes import XValueAxis
 
 (PAGE_WIDTH, PAGE_HEIGHT) = defaultPageSize
 Styles = getSampleStyleSheet()
@@ -30,18 +30,17 @@ class Meminfo(object):
             date = re.search('\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d', lines[0])
             for i in range(len(lines[1:-2])):
                 formated = lines[1:-2][i].split()
-                if not self.meminfo.has_key((formated[0][:-1], i)):
-                    self.meminfo[(formated[0][:-1], i)] = []
-                self.meminfo[(formated[0][:-1], i)].append([formated[1], date.group()])
+                if not self.meminfo.has_key(formated[0][:-1]):
+                    self.meminfo[formated[0][:-1]] = []
+                self.meminfo[formated[0][:-1]].append([formated[1], date.group()])
         print '---> Done'
 
     def drawingData(self, items):
-        #items = sorted(self.meminfo.keys(), key=lambda (proc, i): i, reverse=False)
         data = []
         for item in items:
             dates = map(lambda tstring: time.mktime(time.strptime(tstring, "%Y-%m-%d %H:%M:%S")), [value[1] for value in self.meminfo[item]])
             data.append(zip(dates, [int(value[0]) for value in self.meminfo[item]]))
-        return (dates[0], dates[-1], data)
+        return (items, dates[0], dates[-1], data)
 
 class Procrank(object):
     def __init__(self, filePath):
@@ -78,14 +77,15 @@ class Procrank(object):
             zip(dates, [int(value[1][:-1]) for value in self.procrank[proc]]),
             zip(dates, [int(value[2][:-1]) for value in self.procrank[proc]]),
             ]
-        return (dates[0], dates[-1], data)
+        return (['PSS', 'RSS'], dates[0], dates[-1], data)
 
 class PDFGen(object):
     Date = datetime.datetime.now().strftime("%Y-%m-%d")
     FileLeft = None
     FileRight = None
+    Color = [colors.red, colors.blue, colors.green, colors.pink, colors.gray, colors.cyan, colors.orange, colors.purple, colors.yellow, colors.black]
 
-    def drawLineChart(self, (start, end, data)):
+    def drawLineChart(self, (names, start, end, data)):
         w = PAGE_WIDTH - 2 * inch
         h = w * 0.6
         drawing = Drawing(w, h)
@@ -108,8 +108,24 @@ class PDFGen(object):
         lp.xValueAxis.labels.dy = -10
         lp.xValueAxis.labels.boxAnchor = 'e'
         lp.yValueAxis.labelTextFormat = lambda value: '%d MB' % (int(value) / 1000)
+        for i in range(len(names)):
+            lp.lines[i].strokeColor = self.Color[i]
+
+        legend = Legend()
+        legend.x = 20
+        legend.y = 5
+        legend.colorNamePairs = [(self.Color[i], names[i]) for i in range(len(names))]
+        print legend.colorNamePairs
+        legend.fontName       = 'Helvetica'
+        legend.fontSize       = 7
+        legend.dxTextSpace    = 5
+        legend.dy             = 5
+        legend.dx             = 5
+        legend.deltay         = 5
+        legend.alignment      ='right'
 
         drawing.add(lp)
+        drawing.add(legend)
         return drawing
 
     def drawCoverPage(self, canvas, doc):
@@ -137,11 +153,13 @@ class PDFGen(object):
         story = [Spacer(1, 1.7 * inch)]
         story.append(PageBreak())
         print '---> Start drawing chart of items in meminfo ...'
-        story.append(self.drawLineChart(meminfo.drawingData(meminfo.meminfo.keys())))
+        story.append(self.drawLineChart(meminfo.drawingData(['MemFree', 'Cached', 'AnonPages'])))
+        story.append(Spacer(1, 0.4 * inch))
+        story.append(self.drawLineChart(meminfo.drawingData(['Buffers', 'Mlocked', 'Shmem', 'Slab', 'KernelStack', 'PageTables', 'VmallocAlloc', 'ION_ALLOC'])))
         print '---> Done'
         print '---> Start drawing chart of top processes in procrank ...'
         for top in procrank.topProcs():
-            story.append(Spacer(1, 0.2 * inch))
+            story.append(Spacer(1, 0.4 * inch))
             story.append(Paragraph('%s in procrank memlog' % top, style))
             story.append(self.drawLineChart(procrank.drawingData(top)))
         print '---> Done'
