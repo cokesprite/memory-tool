@@ -46,8 +46,11 @@ class Meminfo(object):
         return (items, dates[0], dates[-1], data, title)
 
 class Procrank(object):
+    RAMS = {512: (20, 50), 768: (20, 50), 1024: (50, 100), 2048: (50, 100)}
     def __init__(self, filePath):
         self.procrank = {}
+        self.dates = []
+        self.ram = 0
         self.filePath = filePath
         self._parse()
 
@@ -57,8 +60,11 @@ class Procrank(object):
         chunks = fileObject.split('------ PROCRANK')
         for chunk in chunks[1:]:
             lines = chunk.split('\n')
-            date = re.search('\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d', lines[0])
-            date = date.group()
+            date = re.search('\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d', lines[0]).group()
+            self.dates.append(date)
+            ram = re.search("(?<=RAM: )\d+(?=K)", lines[-2])
+            if ram != None and self.ram == 0:
+                self.ram = reduce(lambda x, y: y if x <= (int(ram.group()) / 1000) and y > (int(ram.group()) / 1000) else x, self.RAMS.keys())
             for line in lines[2:-5]:
                 formated = line.split()
                 if not self.procrank.has_key(formated[-1]):
@@ -68,6 +74,15 @@ class Procrank(object):
 
     def topProcs(self):
         return sorted(self.procrank.keys(), key=lambda proc: reduce(lambda x, y: x + y, [int(value[2][:-1]) for value in self.procrank[proc]]) / len(self.procrank[proc]), reverse=True)[:20]
+
+    def peakHighProcs(self):
+        return sorted(filter(lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]) >= 1000 * self.RAMS[self.ram][1], self.procrank.keys()), key=lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]), reverse=True)[:10]
+
+    def peakMediumProcs(self):
+        return sorted(filter(lambda proc: 1000 * self.RAMS[self.ram][0] <= max([int(value[2][:-1]) for value in self.procrank[proc]]) < 1000 * self.RAMS[self.ram][1], self.procrank.keys()), key=lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]), reverse=True)[:10]
+
+    def peakLowProcs(self):
+        return sorted(filter(lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]) < 1000 * self.RAMS[self.ram][0], self.procrank.keys()), key=lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]), reverse=True)[:10]
 
     def hotProcs(self):
         return filter(lambda x: self.procrank.has_key(x), ['com.htc.launcher', 'surfaceflinger', 'system_server', 'com.android.browser', 'android.process.acore',
@@ -81,13 +96,13 @@ class Procrank(object):
                 reduce(lambda x, y: x + y, [int(value[2][:-1]) for value in self.procrank[proc]]) / len(self.procrank[proc]),
                 max([int(value[2][:-1]) for value in self.procrank[proc]])] for proc in procs]
 
-    def drawingData(self, proc, title=None):
-        dates = map(lambda tstring: time.mktime(time.strptime(tstring, "%Y-%m-%d %H:%M:%S")), [value[4] for value in self.procrank[proc]])
-        data = [
-            zip(dates, [int(value[1][:-1]) for value in self.procrank[proc]]),
-            zip(dates, [int(value[2][:-1]) for value in self.procrank[proc]]),
-            ]
-        return (['RSS', 'PSS'], dates[0], dates[-1], data, title)
+    def drawingData(self, procs, title=None):
+        data = []
+        fullDates = map(lambda tstring: time.mktime(time.strptime(tstring, "%Y-%m-%d %H:%M:%S")), self.dates)
+        for proc in procs:
+            dates = map(lambda tstring: time.mktime(time.strptime(tstring, "%Y-%m-%d %H:%M:%S")), [value[4] for value in self.procrank[proc]])
+            data.append(sorted(zip(dates, [int(value[2][:-1]) for value in self.procrank[proc]]) + [(left, 0) for left in (set(fullDates) - set(dates))], key=lambda (x, y): x, reverse=True))
+        return (procs, fullDates[0], fullDates[-1], data, title)
 
 class PDFGen(object):
     Date = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -183,7 +198,7 @@ class PDFGen(object):
         canvas.drawString(inch, 0.75 * inch, "Page %d" % doc.page)
         canvas.restoreState()
 
-    def generate(self, meminfo, procrank, fileLeft, fileRight, output=None):
+    def generate(self, meminfo, procrank):
         doc = SimpleDocTemplate('memory analysis report.pdf')
         style = Styles['Normal']
         story = [Spacer(1, 1.7 * inch)]
@@ -205,9 +220,12 @@ class PDFGen(object):
         story.append(Spacer(1, 0.5 * inch))
         print '---> Done'
         print '---> Start drawing chart of top processes in procrank ...'
-        for top in procrank.topProcs():
-            story.append(self.drawLineChart(procrank.drawingData(top, 'Process: %s in Procrank' % top)))
-            story.append(Spacer(1, 0.5 * inch))
+        story.append(self.drawLineChart(procrank.drawingData(procrank.peakHighProcs(), 'Peak >= 100MB')))
+        story.append(Spacer(1, 0.5 * inch))
+        story.append(self.drawLineChart(procrank.drawingData(procrank.peakMediumProcs(), '50MB <= Peak < 100MB')))
+        story.append(Spacer(1, 0.5 * inch))
+        story.append(self.drawLineChart(procrank.drawingData(procrank.peakLowProcs(), 'Peak < 50MB')))
+        story.append(Spacer(1, 0.5 * inch))
         print '---> Done'
         print '---> Start generate report in PDF ...'
         doc.build(story, onFirstPage=self.drawCoverPage, onLaterPages=self.drawContentPage)
@@ -218,7 +236,7 @@ def _Main():
     procrank = Procrank('memlog_procrank.txt')
 
     pdf = PDFGen()
-    pdf.generate(meminfo, procrank, None, None)
+    pdf.generate(meminfo, procrank)
 
 if __name__ == '__main__':
     _Main()
