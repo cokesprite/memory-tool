@@ -4,7 +4,7 @@ import datetime
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, PageBreak
 from reportlab.graphics.shapes import Drawing
-from reportlab.graphics.charts.lineplots import GridLinePlot
+from reportlab.graphics.charts.lineplots import LinePlot, GridLinePlot
 from reportlab.graphics.charts.legends import Legend
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.rl_config import defaultPageSize
@@ -13,6 +13,7 @@ from reportlab.lib import colors
 from reportlab.graphics.charts.axes import XValueAxis
 from reportlab.graphics.charts.textlabels import Label
 from reportlab.platypus.tables import TableStyle
+from reportlab.graphics.widgets.grids import Grid
 
 (PAGE_WIDTH, PAGE_HEIGHT) = defaultPageSize
 Styles = {'Normal': ParagraphStyle(name='Normal', fontName='Helvetica', fontSize=10, leading=12),
@@ -20,6 +21,8 @@ Styles = {'Normal': ParagraphStyle(name='Normal', fontName='Helvetica', fontSize
           'Header': ParagraphStyle(name='Header', fontName='Helvetica-Bold', fontSize=12, leading=12),}
 
 class Meminfo(object):
+    Free = {'MemFree': 1, 'Cached': 1, 'SwapCached': 1, 'Mlocked': -1, 'Shmem': -1}
+    Used = ['AnonPages', 'Slab', 'VmallocAlloc', 'Mlocked', 'Shmem', 'KernelStack', 'PageTables', 'KGSL_ALLOC', 'ION_ALLOC']
     def __init__(self, filePath):
         self.meminfo = {}
         self.filePath = filePath
@@ -44,15 +47,9 @@ class Meminfo(object):
                 self.meminfo['Free'] = []
             if not self.meminfo.has_key('Used'):
                 self.meminfo['Used'] = []
-            self.meminfo['Free'].append([int(self.meminfo['MemFree'][-1][0]) + int(self.meminfo['Cached'][-1][0]) + int(self.meminfo['SwapCached'][-1][0]) - int(self.meminfo['Mlocked'][-1][0]) - int(self.meminfo['Shmem'][-1][0]), date])
-            self.meminfo['Used'].append([int(self.meminfo['AnonPages'][-1][0]) + int(self.meminfo['Slab'][-1][0]) + int(self.meminfo['VmallocAlloc'][-1][0]) + int(self.meminfo['Mlocked'][-1][0]) + int(self.meminfo['Shmem'][-1][0]) + int(self.meminfo['KernelStack'][-1][0]) + int(self.meminfo['PageTables'][-1][0]) + int(self.meminfo['KGSL_ALLOC'][-1][0]) + int(self.meminfo['ION_ALLOC'][-1][0]), date])
+            self.meminfo['Free'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) * self.Free[value] for value in filter(lambda x: self.meminfo.has_key(x), self.Free.keys())]), date])
+            self.meminfo['Used'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) for value in filter(lambda x: self.meminfo.has_key(x), self.Used)]), date])
         print '---> Done'
-
-        for i in range(len(dates)):
-            if int(self.meminfo['Free'][i][0]) != (int(self.meminfo['MemFree'][i][0]) + int(self.meminfo['Cached'][i][0]) + int(self.meminfo['SwapCached'][i][0]) - int(self.meminfo['Mlocked'][i][0]) - int(self.meminfo['Shmem'][i][0])):
-                print '!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
-            if int(self.meminfo['Used'][i][0]) != (int(self.meminfo['AnonPages'][i][0]) + int(self.meminfo['Slab'][i][0]) + int(self.meminfo['VmallocAlloc'][i][0]) + int(self.meminfo['Mlocked'][i][0]) + int(self.meminfo['Shmem'][i][0]) + int(self.meminfo['KernelStack'][i][0]) + int(self.meminfo['PageTables'][i][0]) + int(self.meminfo['KGSL_ALLOC'][i][0]) + int(self.meminfo['ION_ALLOC'][i][0])):
-                print '!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
 
     def drawingData(self, items, title=None):
         data = []
@@ -123,12 +120,12 @@ class PDFGen(object):
     FileRight = None
     Color = [colors.red, colors.blue, colors.green, colors.pink, colors.gray, colors.cyan, colors.orange, colors.purple, colors.yellow, colors.black]
 
-    def drawLineChart(self, (names, start, end, data, title)):
+    def drawLineChart(self, (names, start, end, data, title), reserved=None):
         w = PAGE_WIDTH - 2 * inch
         h = w * 0.6
         drawing = Drawing(w, h)
 
-        lp = GridLinePlot()
+        lp = LinePlot()
         lp.x = 0
         lp.y = 0
         lp.height = h - 30
@@ -150,6 +147,13 @@ class PDFGen(object):
         lp.yValueAxis.labelTextFormat = lambda value: '%d MB' % (int(value) / 1000)
         lp.yValueAxis.labels.fontName = 'Helvetica'
         lp.yValueAxis.labels.fontSize = 7
+        if reserved:
+            lp.yValueAxis.valueMin = 0
+            lp.yValueAxis.valueStep = 100 * 1000
+            lp.yValueAxis.visibleGrid = True
+            lp.yValueAxis.gridStrokeDashArray = [50]
+            lp.yValueAxis.drawGridLast = True
+
         for i in range(len(names)):
             lp.lines[i].strokeColor = self.Color[i]
 
@@ -219,7 +223,7 @@ class PDFGen(object):
         story.append(Spacer(1, 0.5 * inch))
         story.append(Paragraph('Meminfo Analysis', Styles['Header']))
         story.append(Spacer(1, 0.5 * inch))
-        story.append(self.drawLineChart(meminfo.drawingData(['Free', 'Cached', 'AnonPages', 'Used'])))
+        story.append(self.drawLineChart(meminfo.drawingData(['Free', 'Cached', 'AnonPages', 'Used']), True))
         story.append(Spacer(1, 0.5 * inch))
         story.append(Paragraph('* Free = MemFree + Cached + SwapCached - Mlocked - Shmem', Styles['Tips']))
         story.append(Paragraph('* Used = AnonPages + Slab + VmallocAlloc + Mlocked + Shmem + KernelStack + PageTables + KGSL_ALLOC + ION_ALLOC', Styles['Tips']))
