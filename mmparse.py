@@ -147,12 +147,20 @@ class PDFGen(object):
         lp.yValueAxis.labelTextFormat = lambda value: '%d MB' % (int(value) / 1000)
         lp.yValueAxis.labels.fontName = 'Helvetica'
         lp.yValueAxis.labels.fontSize = 7
+
+        fakeAxis = []
         if reserved:
             lp.yValueAxis.valueMin = 0
             lp.yValueAxis.valueStep = 100 * 1000
-            lp.yValueAxis.visibleGrid = True
-            lp.yValueAxis.gridStrokeDashArray = [50]
-            lp.yValueAxis.drawGridLast = True
+            for i in range(1, 3):
+                xAxis = XValueAxis()
+                xAxis.joinAxis = lp.yValueAxis
+                xAxis.joinAxisMode = 'value'
+                xAxis.joinAxisPos = i * 500 * 1000
+                xAxis.visibleLabels = False
+                xAxis.visibleTicks = False
+                xAxis.setPosition(0, 0, lp.width)
+                fakeAxis.append(xAxis)
 
         for i in range(len(names)):
             lp.lines[i].strokeColor = self.Color[i]
@@ -172,6 +180,9 @@ class PDFGen(object):
 
         drawing.add(lp)
         drawing.add(legend)
+        if reserved:
+            for axis in fakeAxis:
+                drawing.add(axis)
 
         if title != None:
             label = Label()
