@@ -22,6 +22,8 @@ Styles = {'Normal': ParagraphStyle(name='Normal', fontName='Helvetica', fontSize
 class Meminfo(object):
     Free = {'MemFree': 1, 'Cached': 1, 'SwapCached': 1, 'Mlocked': -1, 'Shmem': -1}
     Used = ['AnonPages', 'Slab', 'VmallocAlloc', 'Mlocked', 'Shmem', 'KernelStack', 'PageTables', 'KGSL_ALLOC', 'ION_ALLOC', 'ION_Alloc']
+    Items = ['MemTotal', 'MemFree', 'Buffers', 'Cached', 'SwapCached', 'Active', 'Inactive', 'Active(anon)', 'Inactive(anon)', 'Active(file)', 'Inactive(file)', 'Unevictable', 'Mlocked', 'HighTotal', 'HighFree', 'LowTotal', 'LowFree', 'SwapTotal', 'SwapFree', 'Dirty', 'Writeback', 'AnonPages', 'Mapped', 'Shmem', 'Slab', 'SReclaimable', 'SUnreclaim', 'KernelStack', 'PageTables', 'NFS_Unstable', 'Bounce', 'WritebackTmp', 'CommitLimit', 'Committed_AS', 'VmallocTotal', 'VmallocUsed', 'VmallocIoRemap', 'VmallocAlloc', 'VmallocMap', 'VmallocUserMap', 'VmallocVpage', 'VmallocChunk', 'KGSL_ALLOC', 'ION_ALLOC']
+
     def __init__(self, filePath):
         self.meminfo = {}
         self.filePath = filePath
@@ -59,6 +61,11 @@ class Meminfo(object):
             self.meminfo['Free'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) * self.Free[value] for value in filter(lambda x: self.meminfo.has_key(x), self.Free.keys())]), date])
             self.meminfo['Used'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) for value in filter(lambda x: self.meminfo.has_key(x), self.Used)]), date])
         print '---> Done'
+
+    def tableData(self, items):
+        return [['Item', 'Average (MB)', 'Peak (MB)']] + [[item,
+                '%.1f' % ((reduce(lambda x, y: x + y, [int(value[0]) for value in self.meminfo[item]]) / len(self.meminfo[item])) / 1000.0),
+                '%.1f' % (max([int(value[0]) for value in self.meminfo[item]]) / 1000.0)] for item in filter(lambda x: self.meminfo.has_key(x), items)]
 
     def drawingData(self, items, title=None):
         data = []
@@ -234,10 +241,16 @@ class PDFGen(object):
         doc = SimpleDocTemplate('memory analysis report.pdf')
         story = [Spacer(1, 1.7 * inch)]
         story.append(PageBreak())
-        print '---> Start drawing chart of items in meminfo ...'
+        print '---> Start drawing table of average and peak meminfo items ...'
         story.append(Spacer(1, 0.5 * inch))
         story.append(Paragraph('Meminfo Analysis', Styles['Header']))
         story.append(Spacer(1, 0.5 * inch))
+        story.append(self.drawTable(meminfo.tableData(meminfo.Items)))
+        story.append(Spacer(1, 0.5 * inch))
+        story.append(self.drawTable(meminfo.tableData(['Used', 'Free'])))
+        story.append(Spacer(1, 0.5 * inch))
+        print '---> Done'
+        print '---> Start drawing chart of meminfo items...'
         story.append(self.drawLineChart(meminfo.drawingData(['Free', 'Cached', 'AnonPages', 'Used']), (meminfo.ram, 100000 if meminfo.ram > 512000 else 50000)))
         story.append(Spacer(1, 0.5 * inch))
         story.append(Paragraph('* Free = MemFree + Cached + SwapCached - Mlocked - Shmem', Styles['Tips']))
@@ -264,7 +277,7 @@ class PDFGen(object):
         story.append(Spacer(1, 0.1 * inch))
         story.append(self.drawTable(procrank.tableData(procrank.hotProcs())))
         print '---> Done'
-        print '---> Start drawing chart of top processes in procrank ...'
+        print '---> Start drawing chart of processes in procrank ...'
         story.append(PageBreak())
         story.append(Paragraph('PSS Peak Above %s MB' % procrank.RAMS[procrank.ram][0][1], Styles['Normal']))
         story.append(Spacer(1, 0.1 * inch))
