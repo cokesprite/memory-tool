@@ -21,7 +21,7 @@ Styles = {'Normal': ParagraphStyle(name='Normal', fontName='Helvetica', fontSize
 
 class Meminfo(object):
     Free = {'MemFree': 1, 'Cached': 1, 'SwapCached': 1, 'Mlocked': -1, 'Shmem': -1}
-    Used = ['AnonPages', 'Slab', 'VmallocAlloc', 'Mlocked', 'Shmem', 'KernelStack', 'PageTables', 'KGSL_ALLOC', 'ION_ALLOC']
+    Used = ['AnonPages', 'Slab', 'VmallocAlloc', 'Mlocked', 'Shmem', 'KernelStack', 'PageTables', 'KGSL_ALLOC', 'ION_ALLOC', 'ION_Alloc']
     def __init__(self, filePath):
         self.meminfo = {}
         self.filePath = filePath
@@ -51,7 +51,7 @@ class Meminfo(object):
                     self.meminfo[formated[0][:-1]] = []
                 self.meminfo[formated[0][:-1]].append([formated[1], date])
                 if formated[0][:-1] == 'MemTotal' and self.ram == 0:
-                    self.ram = formated[1]
+                    self.ram = int(formated[1])
             if not self.meminfo.has_key('Free'):
                 self.meminfo['Free'] = []
             if not self.meminfo.has_key('Used'):
@@ -67,8 +67,14 @@ class Meminfo(object):
             data.append(zip(dates, [int(value[0]) for value in self.meminfo[item]]))
         return (items, dates[0], dates[-1], data, title)
 
+    def overRange(self, items, rangeValue):
+        return filter(lambda x: max([int(value[0]) for value in self.meminfo[x]]) > rangeValue, filter(lambda x: self.meminfo.has_key(x), items))
+
+    def inRange(self, items, rangeValue):
+        return filter(lambda x: max([int(value[0]) for value in self.meminfo[x]]) < rangeValue, filter(lambda x: self.meminfo.has_key(x), items))
+
 class Procrank(object):
-    RAMS = {512: (20, 50), 768: (20, 50), 1024: (50, 100), 2048: (50, 100)}
+    RAMS = {512: ((20, 50, 200), (2, 5, 20)), 768: ((20, 50, 200), (2, 5, 20)), 1024: ((50, 100, 500), (5, 10, 50)), 2048: ((50, 100, 500), (5, 10, 50))}
     def __init__(self, filePath):
         self.procrank = {}
         self.dates = []
@@ -99,21 +105,21 @@ class Procrank(object):
         return sorted(self.procrank.keys(), key=lambda proc: reduce(lambda x, y: x + y, [int(value[2][:-1]) for value in self.procrank[proc]]) / len(self.procrank[proc]), reverse=True)[:20]
 
     def peakHighProcs(self):
-        return sorted(filter(lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]) >= 1000 * self.RAMS[self.ram][1], self.procrank.keys()), key=lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]), reverse=True)[:10]
+        return sorted(filter(lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]) >= 1000 * self.RAMS[self.ram][0][1], self.procrank.keys()), key=lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]), reverse=True)
 
     def peakMediumProcs(self):
-        return sorted(filter(lambda proc: 1000 * self.RAMS[self.ram][0] <= max([int(value[2][:-1]) for value in self.procrank[proc]]) < 1000 * self.RAMS[self.ram][1], self.procrank.keys()), key=lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]), reverse=True)[:10]
+        return sorted(filter(lambda proc: 1000 * self.RAMS[self.ram][0][0] <= max([int(value[2][:-1]) for value in self.procrank[proc]]) < 1000 * self.RAMS[self.ram][0][1], self.procrank.keys()), key=lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]), reverse=True)
 
     def peakLowProcs(self):
-        return sorted(filter(lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]) < 1000 * self.RAMS[self.ram][0], self.procrank.keys()), key=lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]), reverse=True)[:10]
+        return sorted(filter(lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]) < 1000 * self.RAMS[self.ram][0][0], self.procrank.keys()), key=lambda proc: max([int(value[2][:-1]) for value in self.procrank[proc]]), reverse=True)[:10]
 
     def hotProcs(self):
         return filter(lambda x: self.procrank.has_key(x), ['com.htc.launcher', 'surfaceflinger', 'system_server', 'com.android.browser', 'android.process.acore', 'com.android.phone', 'com.android.systemui', 'com.htc.idlescreen.shortcut', 'com.android.chrome', 'com.android.launcher', 'com.android.htcdialer', 'com.htc.android.htcime'])
 
     def tableData(self, procs):
-        return [['Process Name', 'PSS Average (KB)', 'PSS Peak (KB)']] + [[proc,
-                reduce(lambda x, y: x + y, [int(value[2][:-1]) for value in self.procrank[proc]]) / len(self.procrank[proc]),
-                max([int(value[2][:-1]) for value in self.procrank[proc]])] for proc in procs]
+        return [['Process Name', 'PSS Average (MB)', 'PSS Peak (MB)']] + [[proc,
+                '%.1f' % ((reduce(lambda x, y: x + y, [int(value[2][:-1]) for value in self.procrank[proc]]) / len(self.procrank[proc])) / 1000.0),
+                '%.1f' % (max([int(value[2][:-1]) for value in self.procrank[proc]]) / 1000.0)] for proc in procs]
 
     def drawingData(self, procs, title=None):
         data = []
@@ -129,7 +135,7 @@ class PDFGen(object):
     FileRight = None
     Color = [colors.red, colors.blue, colors.green, colors.pink, colors.gray, colors.cyan, colors.orange, colors.purple, colors.yellow, colors.black]
 
-    def drawLineChart(self, (names, start, end, data, title), reserved=0):
+    def drawLineChart(self, (names, start, end, data, title), reserved=None):
         w = PAGE_WIDTH - 2 * inch
         h = w * 0.6
         drawing = Drawing(w, h)
@@ -158,9 +164,10 @@ class PDFGen(object):
         lp.yValueAxis.labels.fontSize = 7
         lp.yValueAxis.visibleGrid = True
         lp.yValueAxis.drawGridLast = True
+        lp.yValueAxis.valueMin = 0
         if reserved:
-            lp.yValueAxis.valueMin = 0
-            lp.yValueAxis.valueStep = 100000 if int(reserved) > 512000 else 50000
+            if reserved[0]: lp.yValueAxis.valueMax = reserved[0]
+            if reserved[1]: lp.yValueAxis.valueStep = reserved[1]
 
         for i in range(len(names)):
             lp.lines[i].strokeColor = self.Color[i]
@@ -231,13 +238,19 @@ class PDFGen(object):
         story.append(Spacer(1, 0.5 * inch))
         story.append(Paragraph('Meminfo Analysis', Styles['Header']))
         story.append(Spacer(1, 0.5 * inch))
-        story.append(self.drawLineChart(meminfo.drawingData(['Free', 'Cached', 'AnonPages', 'Used']), meminfo.ram))
+        story.append(self.drawLineChart(meminfo.drawingData(['Free', 'Cached', 'AnonPages', 'Used']), (meminfo.ram, 100000 if meminfo.ram > 512000 else 50000)))
         story.append(Spacer(1, 0.5 * inch))
         story.append(Paragraph('* Free = MemFree + Cached + SwapCached - Mlocked - Shmem', Styles['Tips']))
         story.append(Paragraph('* Used = AnonPages + Slab + VmallocAlloc + Mlocked + Shmem + KernelStack + PageTables + KGSL_ALLOC + ION_ALLOC', Styles['Tips']))
         story.append(Spacer(1, 0.5 * inch))
-        story.append(self.drawLineChart(meminfo.drawingData(['Buffers', 'Mlocked', 'Shmem', 'Slab', 'KernelStack', 'PageTables', 'VmallocAlloc', 'ION_ALLOC'])))
-        story.append(Spacer(1, 0.5 * inch))
+        items = meminfo.inRange(['Buffers', 'Mlocked', 'Shmem', 'Slab', 'KernelStack', 'PageTables', 'VmallocAlloc', 'ION_ALLOC', 'ION_Alloc'], 80000 if meminfo.ram > 1000000 else 40000)
+        if (len(items) > 0):
+            story.append(self.drawLineChart(meminfo.drawingData(items), (80000 if meminfo.ram > 1000000 else 40000, 10000 if meminfo.ram > 1000000 else 5000)))
+            story.append(Spacer(1, 0.5 * inch))
+        items = meminfo.overRange(['Buffers', 'Mlocked', 'Shmem', 'Slab', 'KernelStack', 'PageTables', 'VmallocAlloc', 'ION_ALLOC', 'ION_Alloc'], 80000 if meminfo.ram > 1000000 else 40000)
+        if (len(items) > 0):
+            story.append(self.drawLineChart(meminfo.drawingData(items)))
+            story.append(Spacer(1, 0.5 * inch))
         print '---> Done'
         print '---> Start drawing table of average and peak procrank items ...'
         story.append(PageBreak())
@@ -253,20 +266,20 @@ class PDFGen(object):
         print '---> Done'
         print '---> Start drawing chart of top processes in procrank ...'
         story.append(PageBreak())
-        story.append(Paragraph('PSS Peak Above %s MB' % procrank.RAMS[procrank.ram][1], Styles['Normal']))
+        story.append(Paragraph('PSS Peak Above %s MB' % procrank.RAMS[procrank.ram][0][1], Styles['Normal']))
         story.append(Spacer(1, 0.1 * inch))
         for procs in [procrank.peakHighProcs()[i:i+3] for i in range(0,len(procrank.peakHighProcs()),3)]:
-            story.append(self.drawLineChart(procrank.drawingData(procs)))
+            story.append(self.drawLineChart(procrank.drawingData(procs), (1000 * procrank.RAMS[procrank.ram][0][2], 1000 * procrank.RAMS[procrank.ram][1][2])))
             story.append(Spacer(1, 0.6 * inch))
-        story.append(Paragraph('PSS Peak in (%s MB, %s MB)' % (procrank.RAMS[procrank.ram][0], procrank.RAMS[procrank.ram][1]), Styles['Normal']))
+        story.append(Paragraph('PSS Peak in (%s MB, %s MB)' % (procrank.RAMS[procrank.ram][0][0], procrank.RAMS[procrank.ram][0][1]), Styles['Normal']))
         story.append(Spacer(1, 0.1 * inch))
         for procs in [procrank.peakMediumProcs()[i:i+3] for i in range(0,len(procrank.peakMediumProcs()),3)]:
-            story.append(self.drawLineChart(procrank.drawingData(procs)))
+            story.append(self.drawLineChart(procrank.drawingData(procs), (1000 * procrank.RAMS[procrank.ram][0][1], 1000 * procrank.RAMS[procrank.ram][1][1])))
             story.append(Spacer(1, 0.6 * inch))
-        story.append(Paragraph('PSS Peak Below %s MB' % procrank.RAMS[procrank.ram][0], Styles['Normal']))
+        story.append(Paragraph('PSS Peak Below %s MB' % procrank.RAMS[procrank.ram][0][0], Styles['Normal']))
         story.append(Spacer(1, 0.1 * inch))
         for procs in [procrank.peakLowProcs()[i:i+3] for i in range(0,len(procrank.peakLowProcs()),3)]:
-            story.append(self.drawLineChart(procrank.drawingData(procs)))
+            story.append(self.drawLineChart(procrank.drawingData(procs), (1000 * procrank.RAMS[procrank.ram][0][0], 1000 * procrank.RAMS[procrank.ram][1][0])))
             story.append(Spacer(1, 0.6 * inch))
         print '---> Done'
         print '---> Start generate report in PDF ...'
