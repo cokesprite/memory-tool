@@ -4,7 +4,7 @@ import datetime
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, PageBreak
 from reportlab.graphics.shapes import Drawing
-from reportlab.graphics.charts.lineplots import LinePlot, GridLinePlot
+from reportlab.graphics.charts.lineplots import LinePlot
 from reportlab.graphics.charts.legends import Legend
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.rl_config import defaultPageSize
@@ -13,7 +13,6 @@ from reportlab.lib import colors
 from reportlab.graphics.charts.axes import XValueAxis
 from reportlab.graphics.charts.textlabels import Label
 from reportlab.platypus.tables import TableStyle
-from reportlab.graphics.widgets.grids import Grid
 
 (PAGE_WIDTH, PAGE_HEIGHT) = defaultPageSize
 Styles = {'Normal': ParagraphStyle(name='Normal', fontName='Helvetica', fontSize=10, leading=12),
@@ -26,6 +25,7 @@ class Meminfo(object):
     def __init__(self, filePath):
         self.meminfo = {}
         self.filePath = filePath
+        self.ram = 0
         self._parse()
 
     def _parse(self):
@@ -33,16 +33,25 @@ class Meminfo(object):
         print '---> Start parsing meminfo memlog ...'
         chunks = fileObject.split('------ MEMORY INFO')
         dates = []
+        start = False
         for chunk in chunks[1:]:
             lines = chunk.split('\n')
             date = re.search('\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d', lines[0]).group()
             dates.append(date)
-            for i in range(len(lines[1:-2])):
-                formated = lines[1:-2][i].split()
+            start = False
+            for line in lines:
+                if not start:
+                    if re.match('MemTotal', line) == None:
+                        continue
+                    else:
+                        start = True
+                formated = line.split()
                 if len(formated) == 0: break
                 if not self.meminfo.has_key(formated[0][:-1]):
                     self.meminfo[formated[0][:-1]] = []
                 self.meminfo[formated[0][:-1]].append([formated[1], date])
+                if formated[0][:-1] == 'MemTotal' and self.ram == 0:
+                    self.ram = formated[1]
             if not self.meminfo.has_key('Free'):
                 self.meminfo['Free'] = []
             if not self.meminfo.has_key('Used'):
@@ -53,7 +62,7 @@ class Meminfo(object):
 
     def drawingData(self, items, title=None):
         data = []
-        for item in items:
+        for item in filter(lambda x: self.meminfo.has_key(x), items):
             dates = map(lambda tstring: time.mktime(time.strptime(tstring, "%Y-%m-%d %H:%M:%S")), [value[1] for value in self.meminfo[item]])
             data.append(zip(dates, [int(value[0]) for value in self.meminfo[item]]))
         return (items, dates[0], dates[-1], data, title)
@@ -120,7 +129,7 @@ class PDFGen(object):
     FileRight = None
     Color = [colors.red, colors.blue, colors.green, colors.pink, colors.gray, colors.cyan, colors.orange, colors.purple, colors.yellow, colors.black]
 
-    def drawLineChart(self, (names, start, end, data, title), reserved=None):
+    def drawLineChart(self, (names, start, end, data, title), reserved=0):
         w = PAGE_WIDTH - 2 * inch
         h = w * 0.6
         drawing = Drawing(w, h)
@@ -147,12 +156,11 @@ class PDFGen(object):
         lp.yValueAxis.labelTextFormat = lambda value: '%d MB' % (int(value) / 1000)
         lp.yValueAxis.labels.fontName = 'Helvetica'
         lp.yValueAxis.labels.fontSize = 7
+        lp.yValueAxis.visibleGrid = True
+        lp.yValueAxis.drawGridLast = True
         if reserved:
             lp.yValueAxis.valueMin = 0
-            lp.yValueAxis.valueStep = 100 * 1000
-            lp.yValueAxis.visibleGrid = True
-            lp.yValueAxis.gridStrokeDashArray = [50]
-            lp.yValueAxis.drawGridLast = True
+            lp.yValueAxis.valueStep = 100000 if int(reserved) > 512000 else 50000
 
         for i in range(len(names)):
             lp.lines[i].strokeColor = self.Color[i]
@@ -223,7 +231,7 @@ class PDFGen(object):
         story.append(Spacer(1, 0.5 * inch))
         story.append(Paragraph('Meminfo Analysis', Styles['Header']))
         story.append(Spacer(1, 0.5 * inch))
-        story.append(self.drawLineChart(meminfo.drawingData(['Free', 'Cached', 'AnonPages', 'Used']), True))
+        story.append(self.drawLineChart(meminfo.drawingData(['Free', 'Cached', 'AnonPages', 'Used']), meminfo.ram))
         story.append(Spacer(1, 0.5 * inch))
         story.append(Paragraph('* Free = MemFree + Cached + SwapCached - Mlocked - Shmem', Styles['Tips']))
         story.append(Paragraph('* Used = AnonPages + Slab + VmallocAlloc + Mlocked + Shmem + KernelStack + PageTables + KGSL_ALLOC + ION_ALLOC', Styles['Tips']))
@@ -247,16 +255,19 @@ class PDFGen(object):
         story.append(PageBreak())
         story.append(Paragraph('PSS Peak Above %s MB' % procrank.RAMS[procrank.ram][1], Styles['Normal']))
         story.append(Spacer(1, 0.1 * inch))
-        story.append(self.drawLineChart(procrank.drawingData(procrank.peakHighProcs())))
-        story.append(Spacer(1, 0.6 * inch))
+        for procs in [procrank.peakHighProcs()[i:i+3] for i in range(0,len(procrank.peakHighProcs()),3)]:
+            story.append(self.drawLineChart(procrank.drawingData(procs)))
+            story.append(Spacer(1, 0.6 * inch))
         story.append(Paragraph('PSS Peak in (%s MB, %s MB)' % (procrank.RAMS[procrank.ram][0], procrank.RAMS[procrank.ram][1]), Styles['Normal']))
         story.append(Spacer(1, 0.1 * inch))
-        story.append(self.drawLineChart(procrank.drawingData(procrank.peakMediumProcs())))
-        story.append(Spacer(1, 0.6 * inch))
+        for procs in [procrank.peakMediumProcs()[i:i+3] for i in range(0,len(procrank.peakMediumProcs()),3)]:
+            story.append(self.drawLineChart(procrank.drawingData(procs)))
+            story.append(Spacer(1, 0.6 * inch))
         story.append(Paragraph('PSS Peak Below %s MB' % procrank.RAMS[procrank.ram][0], Styles['Normal']))
         story.append(Spacer(1, 0.1 * inch))
-        story.append(self.drawLineChart(procrank.drawingData(procrank.peakLowProcs())))
-        story.append(Spacer(1, 0.6 * inch))
+        for procs in [procrank.peakLowProcs()[i:i+3] for i in range(0,len(procrank.peakLowProcs()),3)]:
+            story.append(self.drawLineChart(procrank.drawingData(procs)))
+            story.append(Spacer(1, 0.6 * inch))
         print '---> Done'
         print '---> Start generate report in PDF ...'
         doc.build(story, onFirstPage=self.drawCoverPage, onLaterPages=self.drawContentPage)
