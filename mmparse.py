@@ -9,20 +9,35 @@ from reportlab.graphics.charts.legends import Legend
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.rl_config import defaultPageSize
 from reportlab.lib.units import inch
-from reportlab.lib import colors
+from reportlab.lib import colors, fonts
 from reportlab.graphics.charts.axes import XValueAxis
 from reportlab.graphics.charts.textlabels import Label
 from reportlab.platypus.tables import TableStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+try:
+    pdfmetrics.registerFont(TTFont('Arial', '/usr/share/fonts/truetype/msttcorefonts/Arial.ttf'))
+    fonts.addMapping('Arial', 0, 0, 'Arial')
+    fonts.addMapping('Arial', 0, 1, 'Arial')
+    Bullet = True
+except:
+    Bullet = False
 
 (PAGE_WIDTH, PAGE_HEIGHT) = defaultPageSize
-Styles = {'Normal': ParagraphStyle(name='Normal', fontName='Helvetica', fontSize=10, leading=12),
-          'Tips': ParagraphStyle(name='Header', fontName='Helvetica', fontSize=8, leading=12),
-          'Header': ParagraphStyle(name='Header', fontName='Helvetica-Bold', fontSize=12, leading=12),}
+Styles = {'Normal': ParagraphStyle(name = 'Normal', fontName = 'Helvetica', fontSize = 10, leading = 12, spaceAfter = 5, bulletFontName = 'Arial' if Bullet else 'Helvetica', bulletFontSize = 10),
+          'Tips': ParagraphStyle(name = 'Tips', fontName = 'Helvetica', fontSize = 8, leading = 12),
+          'Heading1': ParagraphStyle(name = 'Heading1', fontName = 'Helvetica-Bold', fontSize = 20, leading = 22, spaceBefore = 30, spaceAfter = 30),
+          'Heading2': ParagraphStyle(name = 'Heading2', fontName = 'Helvetica', fontSize = 14, leading = 12, spaceBefore = 20, spaceAfter = 20), }
+
 
 class Meminfo(object):
     Free = {'MemFree': 1, 'Cached': 1, 'SwapCached': 1, 'Mlocked': -1, 'Shmem': -1}
     Used = ['AnonPages', 'Slab', 'VmallocAlloc', 'Mlocked', 'Shmem', 'KernelStack', 'PageTables', 'KGSL_ALLOC', 'ION_ALLOC', 'ION_Alloc']
+    SwapUsage = {'SwapTotal': 1, 'SwapFree': -1}
+    LMKFile = {'Cached': 1, 'Buffers': 1, 'SwapCached': 1, 'Mlocked': -1, 'Shmem': -1}
     Items = ['MemTotal', 'MemFree', 'Buffers', 'Cached', 'SwapCached', 'Active', 'Inactive', 'Active(anon)', 'Inactive(anon)', 'Active(file)', 'Inactive(file)', 'Unevictable', 'Mlocked', 'HighTotal', 'HighFree', 'LowTotal', 'LowFree', 'SwapTotal', 'SwapFree', 'Dirty', 'Writeback', 'AnonPages', 'Mapped', 'Shmem', 'Slab', 'SReclaimable', 'SUnreclaim', 'KernelStack', 'PageTables', 'NFS_Unstable', 'Bounce', 'WritebackTmp', 'CommitLimit', 'Committed_AS', 'VmallocTotal', 'VmallocUsed', 'VmallocIoRemap', 'VmallocAlloc', 'VmallocMap', 'VmallocUserMap', 'VmallocVpage', 'VmallocChunk', 'KGSL_ALLOC', 'ION_ALLOC']
+    Summary = ['Free', 'MemFree', 'Cached', 'SwapCached', 'Used', 'AnonPages', 'Slab', 'Buffers', 'Mlocked', 'Shmem', 'KernelStack', 'PageTables', 'VmallocAlloc', 'KGSL_ALLOC', 'ION_Alloc', 'ION_ALLOC', 'SwapUsage', 'LMK File']
 
     def __init__(self, filePath):
         self.meminfo = {}
@@ -35,6 +50,10 @@ class Meminfo(object):
         print '---> Start parsing meminfo memlog ...'
         chunks = fileObject.split('------ MEMORY INFO')
         dates = []
+        self.meminfo['Free'] = []
+        self.meminfo['Used'] = []
+        self.meminfo['SwapUsage'] = []
+        self.meminfo['LMK File'] = []
         for chunk in chunks[1:]:
             lines = chunk.split('\n')
             date = re.search('\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d', lines[0]).group()
@@ -53,12 +72,10 @@ class Meminfo(object):
                 self.meminfo[formated[0][:-1]].append([formated[1], date])
                 if formated[0][:-1] == 'MemTotal' and self.ram == 0:
                     self.ram = int(formated[1])
-            if not self.meminfo.has_key('Free'):
-                self.meminfo['Free'] = []
-            if not self.meminfo.has_key('Used'):
-                self.meminfo['Used'] = []
             self.meminfo['Free'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) * self.Free[value] for value in filter(lambda x: self.meminfo.has_key(x), self.Free.keys())]), date])
             self.meminfo['Used'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) for value in filter(lambda x: self.meminfo.has_key(x), self.Used)]), date])
+            self.meminfo['SwapUsage'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) * self.SwapUsage[value] for value in filter(lambda x: self.meminfo.has_key(x), self.SwapUsage.keys())]), date])
+            self.meminfo['LMK File'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) * self.LMKFile[value] for value in filter(lambda x: self.meminfo.has_key(x), self.LMKFile.keys())]), date])
         print '---> Done'
 
     def tableData(self, items):
@@ -214,16 +231,24 @@ class PDFGen(object):
 
     def drawTable(self, data):
         t = Table(data, None, None, None, 1, 1, 1)
+        extraStyle = []
+        for i in range(len(data[1:])):
+            if data[1:][i][0] == 'Free' or data[1:][i][0] == 'Used':
+                extraStyle.append(('BACKGROUND', (0, i + 1), (-1, i + 1), colors.orange))
+            if data[1:][i][0] == 'SwapUsage' or data[1:][i][0] == 'LMK File':
+                extraStyle.append(('BACKGROUND', (0, i + 1), (-1, i + 1), colors.lightgreen))
         t.setStyle(TableStyle([('FONT', (0, 0), (-1, -1), 'Helvetica'),
-                               ('BACKGROUND', (0, 0), (-1, 0), colors.green),
-                               ('FONTSIZE', (0, 0), (-1, -1), 8),
+                               ('BACKGROUND', (0, 0), (-1, 0), colors.deepskyblue),
+                               ('FONTSIZE', (0, 0), (-1, -1), 10),
                                ('GRID', (0, 0), (-1, -1), 1, colors.black),
                                ('BOX', (0, 0), (-1, -1), 2, colors.black),
                                ('BOX', (0, 0), (-1, 0), 2, colors.black),
                                ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
-                               ('TOPPADDING', (0, 0), (-1, -1), 1),
-                               ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-                               ]))
+                               ('ALIGN', (1, 0), (-1, 0), 'CENTER'),
+                               ('TOPPADDING', (0, 0), (-1, -1), 4),
+                               ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                               ] + extraStyle))
+        t.hAlign = 'LEFT'
         return t
 
     def drawCoverPage(self, canvas, doc):
@@ -247,14 +272,40 @@ class PDFGen(object):
         doc = SimpleDocTemplate('memory analysis report.pdf')
         story = [Spacer(1, 1.7 * inch)]
         story.append(PageBreak())
+        print '---> Start generate memory analysis summary...'
+        story.append(Paragraph('SST Memory Analysis', Styles['Heading1']))
+        story.append(Paragraph('[Project]_[ROM version]{_[SerialNo]}', Styles['Normal']))
+        story.append(Paragraph('\n', Styles['Normal']))
+        story.append(Paragraph('<u>Summary</u>', Styles['Heading2']))
+        story.append(Paragraph('System Memory Leakage', Styles['Normal'], u'\u25a0'))
+        story.append(Paragraph('N<br/> <br/>', Styles['Normal']))
+        story.append(Paragraph('Kernel Memory Leakage', Styles['Normal'], u'\u25a0'))
+        story.append(Paragraph('None<br/> <br/>', Styles['Normal']))
+        story.append(Paragraph('ANR and LMK Count', Styles['Normal'], u'\u25a0'))
+        story.append(Spacer(1, 0.1 * inch))
+        story.append(self.drawTable([['am_anr', 'send sigkill (LMK)'], [12, 278]]))
+        story.append(Spacer(1, 0.2 * inch))
+        story.append(Paragraph('Memory Usage', Styles['Normal'], u'\u25a0'))
+        story.append(Spacer(1, 0.1 * inch))
+        story.append(self.drawTable(meminfo.tableData(meminfo.Summary)))
+        story.append(Spacer(1, 0.2 * inch))
+        story.append(Paragraph('* Free = MemFree + Cached + SwapCached - Mlocked - Shmem', Styles['Tips']))
+        story.append(Paragraph('* Used = AnonPages + Slab + VmallocAlloc + Mlocked + Shmem + KernelStack + PageTables + KGSL_ALLOC + ION_ALLOC', Styles['Tips']))
+        story.append(Paragraph('* SwapUsage = SwapTotal - SwapFree', Styles['Tips']))
+        story.append(Paragraph('* LMK File = Cached + Buffers + SwapCached - Mlocked - Shmem<br/> <br/>', Styles['Tips']))
+        story.append(Paragraph('<u>ANR Count Statistic</u>', Styles['Heading2']))
+        story.append(self.drawTable([['Process', 'am_anr', '%'], ['com.facebook.katana', '34', '68'], ['com.android.nfc', '12', '24'], ['com.android.vending', '4', '8']]))
+        story.append(Spacer(1, 0.2 * inch))
+        story.append(Paragraph('<u>Send Sigkill Count Statistic</>', Styles['Heading2']))
+        story.append(self.drawTable([['send sigkill level', 'count'], ['total', '278'], ['oom_adj <= 7', '0']]))
+        print '---> Done'
+        story.append(Spacer(1, 0.2 * inch))
+        story.append(PageBreak())
+
         print '---> Start drawing table of average and peak meminfo items ...'
-        story.append(Spacer(1, 0.5 * inch))
-        story.append(Paragraph('Meminfo Analysis', Styles['Header']))
-        story.append(Spacer(1, 0.5 * inch))
+        story.append(Paragraph('<u>Meminfo Analysis</u>', Styles['Heading2']))
         story.append(self.drawTable(meminfo.tableData(meminfo.Items)))
-        story.append(Spacer(1, 0.5 * inch))
-        story.append(self.drawTable(meminfo.tableData(['Used', 'Free'])))
-        story.append(Spacer(1, 0.5 * inch))
+        story.append(Spacer(1, 0.2 * inch))
         print '---> Done'
         print '---> Start drawing chart of meminfo items...'
         story.append(self.drawLineChart(meminfo.drawingData(['Free', 'Cached', 'AnonPages', 'Used']), (meminfo.ram, 100000 if meminfo.ram > 512000 else 50000)))
@@ -273,31 +324,30 @@ class PDFGen(object):
         print '---> Done'
         print '---> Start drawing table of average and peak procrank items ...'
         story.append(PageBreak())
-        story.append(Paragraph('Procrank Analysis', Styles['Header']))
-        story.append(Spacer(1, 0.5 * inch))
-        story.append(Paragraph('Top 20 Procrank', Styles['Normal']))
+        story.append(Paragraph('<u>Procrank Analysis</u>', Styles['Heading2']))
+        story.append(Paragraph('TOP20 procrank', Styles['Normal'], u'\u25a0'))
         story.append(Spacer(1, 0.1 * inch))
         story.append(self.drawTable(procrank.tableData(procrank.topProcs())))
-        story.append(Spacer(1, 0.5 * inch))
-        story.append(Paragraph('Pre-defined Applications', Styles['Normal']))
+        story.append(Spacer(1, 0.2 * inch))
+        story.append(Paragraph('Specific procrank', Styles['Normal'], u'\u25a0'))
         story.append(Spacer(1, 0.1 * inch))
         story.append(self.drawTable(procrank.tableData(procrank.hotProcs())))
+        story.append(Spacer(1, 0.2 * inch))
         print '---> Done'
         print '---> Start drawing chart of processes in procrank ...'
-        story.append(PageBreak())
-        story.append(Paragraph('PSS Peak Above %s MB' % procrank.RAMS[procrank.ram][0][1], Styles['Normal']))
+        story.append(Paragraph('PSS Peak above %s MB' % procrank.RAMS[procrank.ram][0][1], Styles['Normal'], u'\u25a0'))
         story.append(Spacer(1, 0.1 * inch))
-        for procs in [procrank.peakHighProcs()[i:i+3] for i in range(0,len(procrank.peakHighProcs()),3)]:
+        for procs in [procrank.peakHighProcs()[i:i+3] for i in range(0,len(procrank.peakHighProcs()), 3)]:
             story.append(self.drawLineChart(procrank.drawingData(procs), (1000 * procrank.RAMS[procrank.ram][0][2], 1000 * procrank.RAMS[procrank.ram][1][2])))
             story.append(Spacer(1, 0.6 * inch))
-        story.append(Paragraph('PSS Peak in (%s MB, %s MB)' % (procrank.RAMS[procrank.ram][0][0], procrank.RAMS[procrank.ram][0][1]), Styles['Normal']))
+        story.append(Paragraph('PSS Peak between %s MB and %s MB' % (procrank.RAMS[procrank.ram][0][0], procrank.RAMS[procrank.ram][0][1]), Styles['Normal'], u'\u25a0'))
         story.append(Spacer(1, 0.1 * inch))
-        for procs in [procrank.peakMediumProcs()[i:i+3] for i in range(0,len(procrank.peakMediumProcs()),3)]:
+        for procs in [procrank.peakMediumProcs()[i:i+3] for i in range(0, len(procrank.peakMediumProcs()), 3)]:
             story.append(self.drawLineChart(procrank.drawingData(procs), (1000 * procrank.RAMS[procrank.ram][0][1], 1000 * procrank.RAMS[procrank.ram][1][1])))
             story.append(Spacer(1, 0.6 * inch))
-        story.append(Paragraph('PSS Peak Below %s MB' % procrank.RAMS[procrank.ram][0][0], Styles['Normal']))
+        story.append(Paragraph('PSS Peak below %s MB' % procrank.RAMS[procrank.ram][0][0], Styles['Normal'], u'\u25a0'))
         story.append(Spacer(1, 0.1 * inch))
-        for procs in [procrank.peakLowProcs()[i:i+3] for i in range(0,len(procrank.peakLowProcs()),3)]:
+        for procs in [procrank.peakLowProcs()[i:i+3] for i in range(0, len(procrank.peakLowProcs()), 3)]:
             story.append(self.drawLineChart(procrank.drawingData(procs), (1000 * procrank.RAMS[procrank.ram][0][0], 1000 * procrank.RAMS[procrank.ram][1][0])))
             story.append(Spacer(1, 0.6 * inch))
         print '---> Done'

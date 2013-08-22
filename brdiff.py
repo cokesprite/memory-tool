@@ -14,10 +14,10 @@ from reportlab.rl_config import defaultPageSize
 from reportlab.lib.styles import ParagraphStyle
 #from xlwt import Workbook, easyxf
 
-Styles = {'Normal': ParagraphStyle(name='Normal', fontName='Helvetica', fontSize=10, leading=12),
-          'Tips': ParagraphStyle(name='Tips', fontName='Helvetica', fontSize=8, leading=12),
-          'Header1': ParagraphStyle(name='Header1', fontName='Helvetica-Bold', fontSize=14, leading=12),
-          'Header2': ParagraphStyle(name='Header2', fontName='Helvetica', fontSize=12, leading=12),}
+Styles = {'Normal': ParagraphStyle(name = 'Normal', fontName = 'Helvetica', fontSize = 10, leading = 12),
+          'Tips': ParagraphStyle(name = 'Tips', fontName = 'Helvetica', fontSize = 8, leading = 12),
+          'Heading1': ParagraphStyle(name = 'Heading1', fontName = 'Helvetica-Bold', fontSize = 18, leading = 22, spaceAfter = 6),
+          'Heading2': ParagraphStyle(name = 'Heading2', fontName = 'Helvetica', fontSize = 12, leading = 12),}
 
 class InputInfo(object):
     Free = {'MemFree': 1, 'Cached': 1, 'SwapCached': 1, 'Mlocked': -1, 'Shmem': -1}
@@ -238,7 +238,6 @@ class PDFGen(object):
                                ('BOX', (0, 0), (-1, -1), 2, colors.black),
                                ('BOX', (0, 0), (-1, 0), 2, colors.black),
                                ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
-                               ('ALIGN', (1, 0), (-1, 0), 'CENTER'),
                                ('TOPPADDING', (0, 0), (-1, -1), 1),
                                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
                                ] + extraStyle))
@@ -259,12 +258,12 @@ class PDFGen(object):
         story.append(PageBreak())
 
         if len(compare.left.meminfo) > 0 or len(compare.right.meminfo) > 0:
-            story.append(Paragraph('MemInfo Compare', Styles['Header1']))
+            story.append(Paragraph('MemInfo Compare', Styles['Heading1']))
             story.append(Spacer(1, 0.3 * inch))
             story.append(Paragraph('A: %s' % fileLeft, Styles['Normal']))
             story.append(Paragraph('B: %s' % fileRight, Styles['Normal']))
             story.append(Spacer(1, 0.2 * inch))
-            story.append(Paragraph('<u>Summary</u>', Styles['Header2']))
+            story.append(Paragraph('<u>Summary</u>', Styles['Heading2']))
             story.append(Spacer(1, 0.2 * inch))
             story.append(self.drawTable(compare.mTable(compare.MeminfoSummary)))
             story.append(Spacer(1, 0.2 * inch))
@@ -273,18 +272,18 @@ class PDFGen(object):
             story.append(Paragraph('* SwapUsage = SwapTotal - SwapFree', Styles['Tips']))
             story.append(Paragraph('* LMK File = Cached + Buffers + SwapCached - Mlocked - Shmem', Styles['Tips']))
             story.append(PageBreak())
-            story.append(Paragraph('<u>Full data</u>', Styles['Header2']))
+            story.append(Paragraph('<u>Full data</u>', Styles['Heading2']))
             story.append(Spacer(1, 0.2 * inch))
             story.append(self.drawTable(compare.mTable(compare.MeminfoFull)))
             story.append(PageBreak())
 
         if len(compare.left.procrank) > 0 and len(compare.right.procrank) > 0:
-            story.append(Paragraph('Procrank Compare', Styles['Header1']))
+            story.append(Paragraph('Procrank Compare', Styles['Heading1']))
             story.append(Spacer(1, 0.3 * inch))
             story.append(Paragraph('A: %s' % fileLeft, Styles['Normal']))
             story.append(Paragraph('B: %s' % fileRight, Styles['Normal']))
             story.append(Spacer(1, 0.2 * inch))
-            story.append(Paragraph('<u>Summary</u>', Styles['Header2']))
+            story.append(Paragraph('<u>Summary</u>', Styles['Heading2']))
             story.append(Spacer(1, 0.2 * inch))
             story.append(Paragraph('A > B Top 5 process', Styles['Normal'], '*'))
             story.append(Spacer(1, 0.1 * inch))
@@ -310,7 +309,7 @@ class PDFGen(object):
                 text = Paragraph('%s' % compare.pRightOnly()[i], Styles['Normal'], '%d' % (i + 1))
                 story.append(text)
             story.append(PageBreak())
-            story.append(Paragraph('<u>Full data</u>', Styles['Header2']))
+            story.append(Paragraph('<u>Full data</u>', Styles['Heading2']))
             story.append(Spacer(1, 0.2 * inch))
             story.append(self.drawTable(compare.pTable(compare.left.procrank.keys())))
 
