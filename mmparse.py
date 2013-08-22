@@ -35,7 +35,6 @@ class Meminfo(object):
         print '---> Start parsing meminfo memlog ...'
         chunks = fileObject.split('------ MEMORY INFO')
         dates = []
-        start = False
         for chunk in chunks[1:]:
             lines = chunk.split('\n')
             date = re.search('\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d', lines[0]).group()
@@ -100,9 +99,16 @@ class Procrank(object):
             ram = re.search("(?<=RAM: )\d+(?=K)", lines[-2])
             if ram != None and self.ram == 0:
                 self.ram = reduce(lambda x, y: y if x <= (int(ram.group()) / 1000) and y > (int(ram.group()) / 1000) else x, self.RAMS.keys())
-            for line in lines[2:-5]:
+            start = False
+            for line in lines:
+                if not start:
+                    if re.search("^\s*\d+(\s+\d+K){4}", line) != None: start = True
+                    else: continue
+                else:
+                    if re.search("^\s*\d+(\s+\d+K){4}", line) == None:
+                        start = False
+                        break
                 formated = line.split()
-                if len(formated) == 0: break
                 if not self.procrank.has_key(formated[-1]):
                     self.procrank[formated[-1]] = []
                 self.procrank[formated[-1]].append(formated[1:-1] + [date])
