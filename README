@@ -1,70 +1,80 @@
-Memory logger/analysis tool
+nemory Analysis and Comparison Tool
 
-Version 2.0.0
+1. Concept
+----------
 
-Readme: How to use this tool for memory logger/analysis
+nemory Analysis and Comparison Tool is implemented with Python to process original memory logs like
+meminfo, procrank, kmemleak and others.
 
-1. Config environment
-	a. This tool just for Linux OS，need to install python, matplotlib
-	   $ sudo apt-get install python
-	   $ sudo apt-get install python-matplotlib
+- Memory Analysis (mmparse.py): it is used to parse memory log files and generate a memory analysis
+- Memory Comparison (brdiff.py): it is used to compare two copies of Android bugreport (or meminfo/procrank)
 
-2. Run tool
-    a. Copy run.sh/do_parse.py to log file folder
-       $ cp do_parse.py /LOG_PATH/LOG1/   ex: cp do_parse.py /LOG_PATH/dlxp_memory_log_0514/
- 
-    b. Execute test script
-       $ python do_parse.py -m 0     // meminfo analysis
-       $ python do_parse.py -p 0     // procrank analysis
+1.1. Meminfo
 
-3. Test result:
-    When execute finish，folder /LOG_PATH/LOG1/ will generate below files automatically：
-       meminfo_analysis_a_group.png   >> For meminfo analysis(Group a): MemTotal + MemFree + Cached
-       Meminfo_analysis_b_group.png   >> For meminfo analysis(Group b): Buffers + Mlocked + AnonPages + Shmem 
-                                            + Slab + KernelStack + PageTables + VmallocAlloc + ION_Alloc
+meminfo log file helps to collect system-wide memory information, which is always recorded during
+system is running. Meminfo contains information like total memory, free memory, cached memory and
+others. When memory leakage happens, it is expected to show the memory data-changing trend.
 
-       procrank-parsed/  >> For procrank analysis result
-       procrank-parsed/csv-android.process.acore.csv      >> filter process android.process.acore into csc file
-       procrank-parsed/csv-android.process.acore.csv.png  >> generate graph automatically
+1.2. Procrank
 
+Procrank log file shows application memory usage (RSS and PSS) ranking in periodic. Compare with meminfo,
+it is detailed information to detect which application may cause memory leakage.
 
+1.3. Kmemleak
 
- 
-**************************************************************************************************************
-  
-1. Meminfo
-	Meminfo log file helps to collect system-wide memory information, which is always recorded during
-	system is running. Meminfo contains information like total memory, free memory, cached memory and
-	others. When memory leakage happens, it is expected to show the memory data-changing trend.
-	
-2. Procrank
-	Procrank log file shows application memory usage (RSS and PSS) ranking in periodic. Compare with meminfo,
-	it is detailed information to detect which application may cause memory leakage.
-	
-3. Kmemleak
-	Kmemleak is a tool to detect suspicious memory leakage in kernel. From the kmemleak log file, it is
-	expected to find most frequent occurrence of suspicious call stack.
-	
-	
-Analysis Method and Tool
+Kmemleak is a tool to detect suspicious memory leakage in kernel. From the kmemleak log file, it is
+expected to find most frequent occurrence of suspicious call stack.
 
-	Firstly, parse all meminfo in log file. And generate the curves of each entry of meminfo. From the curve,
-	it is expected to get the overview determine whether there is system-wide memory leakage, according to the
-	meminfo entry’s increment trend.
+1.4. ANR and Sigkill
 
-	Generate kmemleak statistics, and then get the most frequently occurred entries for further analysis.
+This tool also detects ANR and Sigkill messages from Android event logs. ANR is "Android Not Response".
 
-	Generate process list and their memory usage (RSS/PSS) curves to determine abnormal ones. This analysis
-	should be operated on those specified process like Launcher, system_server, acore etc.
+1.5. Android Bugreport
 
-	An automation tool is being developed to generate all above information and curve charts. It is expected
-	to be flexible to add more memory log entries for further analysis. This memory tool is developed with python
-	and matplotlib.
+Bugreport is used in Android to generate a full report of system. It can be triggered by "adb shell bugreport"
 
-	Currently, this memory tool includes a bash script and a python script. In bash script, some text-processing
-	commands are used to collect all memory information with special format. And the python script is used to load
-	formatted data to output curve charts.
+2. Solution
+-----------
 
-do_parse.py
+Firstly, parse all meminfo in log file. And generate the curves of each entry of meminfo. From the curve,
+it is expected to get the overview determine whether there is system-wide memory leakage, according to the
+meminfo entry’s increment trend.
 
-********************************************************************************************************************
+Generate kmemleak statistics, and then get the most frequently occurred entries for further analysis.
+
+Generate process list and their memory usage (RSS/PSS) curves to determine abnormal ones. This analysis
+should be operated on those specific process like Launcher, system_server, acore etc.
+
+This tool can generate all above information and curve charts in PDF. It is expected to be flexible
+to add more memory log entries for further analysis. This memory tool is developed with python and reportlab.
+
+3. HOWTO
+--------
+
+3.1. Config environment
+
+Python and Reportlab is required
+$ sudo apt-get install python
+$ sudo apt-get install python-reportlab
+
+3.2. Usages
+
+- brdiff.py
+$ python brdiff.py –help
+$ python brdiff.py bugreport_A.txt bugreport_B.txt -o /tmp/report
+$ python brdiff.py procrank_A.txt procrank_B.txt -o /tmp/report
+$ python brdiff.py meminfo_A.txt meminfo_B.txt -o /tmp/report
+$ python brdiff.py  -o /tmp/report bugreport_A.txt bugreport_B.txt
+
+- mmparse.py
+$ python mmparse.py
+
+3.3. Notes
+
+- brdiff.py
+Need two files as input parameters
+If use -o option, generate report will be named as specified
+If there is no -o option, default report name is “Memory Compare YYYY-MM-DD.pdf”
+
+- mmparse
+This tool will read memlog.txt (meminfo log) and memlog_procrank.txt (procrank). And generate a analysis report in PDF.
