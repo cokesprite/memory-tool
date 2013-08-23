@@ -30,7 +30,6 @@ Styles = {'Normal': ParagraphStyle(name = 'Normal', fontName = 'Helvetica', font
           'Heading1': ParagraphStyle(name = 'Heading1', fontName = 'Helvetica-Bold', fontSize = 20, leading = 22, spaceBefore = 30, spaceAfter = 30),
           'Heading2': ParagraphStyle(name = 'Heading2', fontName = 'Helvetica', fontSize = 14, leading = 12, spaceBefore = 20, spaceAfter = 20), }
 
-
 class Meminfo(object):
     Free = {'MemFree': 1, 'Cached': 1, 'SwapCached': 1, 'Mlocked': -1, 'Shmem': -1}
     Used = ['AnonPages', 'Slab', 'VmallocAlloc', 'Mlocked', 'Shmem', 'KernelStack', 'PageTables', 'KGSL_ALLOC', 'ION_ALLOC', 'ION_Alloc']
@@ -159,6 +158,35 @@ class Procrank(object):
             data.append(sorted(zip(dates, [int(value[2][:-1]) for value in self.procrank[proc]]) + [(left, 0) for left in (set(fullDates) - set(dates))], key=lambda (x, y): x, reverse=True))
         return (procs, fullDates[0], fullDates[-1], data, title)
 
+class EventsLog(object):
+    def __init__(self, filePath):
+        self.filePath = filePath
+        self.anr = {}
+        self._parse()
+        print self.anr
+
+    def _parse(self):
+        fileObject = open(self.filePath, 'r').read()
+        for line in fileObject.split('\n'):
+            find = re.search('(?<=am_anr  : \[)\d+,.*(?=,\d+)', line)
+            if find != None:
+                self.anr[find.group().split(',')[1]] = (self.anr[find.group().split(',')[1]] + 1) if self.anr.has_key(find.group().split(',')[1]) else 1
+
+class KernelLog(object):
+    def __init__(self, filePath):
+        self.filePath = filePath
+        self.sigkill = {}
+        self._parse()
+        print self.sigkill
+
+    def _parse(self):
+        fileObject = open(self.filePath, 'r').read()
+        for line in fileObject.split('\n'):
+            findLine = re.search('(?<=send sigkill to )\d+ \(.+\), oom_adj \d+,', line)
+            if findLine != None:
+                find = re.search('(?<=oom_adj )\d+(?=,)', findLine.group()).group()
+                self.sigkill[int(find)] = (self.sigkill[int(find)] + 1) if self.sigkill.has_key(int(find)) else 1
+
 class PDFGen(object):
     Date = datetime.datetime.now().strftime("%Y-%m-%d")
     FileLeft = None
@@ -241,8 +269,6 @@ class PDFGen(object):
                                ('BACKGROUND', (0, 0), (-1, 0), colors.deepskyblue),
                                ('FONTSIZE', (0, 0), (-1, -1), 10),
                                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                               ('BOX', (0, 0), (-1, -1), 2, colors.black),
-                               ('BOX', (0, 0), (-1, 0), 2, colors.black),
                                ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
                                ('ALIGN', (1, 0), (-1, 0), 'CENTER'),
                                ('TOPPADDING', (0, 0), (-1, -1), 4),
@@ -268,7 +294,7 @@ class PDFGen(object):
         canvas.drawString(inch, 0.75 * inch, "Page %d" % doc.page)
         canvas.restoreState()
 
-    def generate(self, meminfo, procrank):
+    def generate(self, meminfo, procrank, events, kernel):
         doc = SimpleDocTemplate('memory analysis report.pdf')
         story = [Spacer(1, 1.7 * inch)]
         story.append(PageBreak())
@@ -283,7 +309,7 @@ class PDFGen(object):
         story.append(Paragraph('None<br/> <br/>', Styles['Normal']))
         story.append(Paragraph('ANR and LMK Count', Styles['Normal'], u'\u25a0'))
         story.append(Spacer(1, 0.1 * inch))
-        story.append(self.drawTable([['am_anr', 'send sigkill (LMK)'], [12, 278]]))
+        story.append(self.drawTable([['am_anr', 'send sigkill (LMK)'], [sum(events.anr.values()), sum(kernel.sigkill.values())]]))
         story.append(Spacer(1, 0.2 * inch))
         story.append(Paragraph('Memory Usage', Styles['Normal'], u'\u25a0'))
         story.append(Spacer(1, 0.1 * inch))
@@ -294,10 +320,10 @@ class PDFGen(object):
         story.append(Paragraph('* SwapUsage = SwapTotal - SwapFree', Styles['Tips']))
         story.append(Paragraph('* LMK File = Cached + Buffers + SwapCached - Mlocked - Shmem<br/> <br/>', Styles['Tips']))
         story.append(Paragraph('<u>ANR Count Statistic</u>', Styles['Heading2']))
-        story.append(self.drawTable([['Process', 'am_anr', '%'], ['com.facebook.katana', '34', '68'], ['com.android.nfc', '12', '24'], ['com.android.vending', '4', '8']]))
+        story.append(self.drawTable([['Process', 'am_anr', '%']] + [[proc, events.anr[proc], '%d' % (100.0 * events.anr[proc] / sum(events.anr.values()))] for proc in sorted(events.anr.keys(), key=lambda x: events.anr[x], reverse=True)]))
         story.append(Spacer(1, 0.2 * inch))
         story.append(Paragraph('<u>Send Sigkill Count Statistic</>', Styles['Heading2']))
-        story.append(self.drawTable([['send sigkill level', 'count'], ['total', '278'], ['oom_adj <= 7', '0']]))
+        story.append(self.drawTable([['send sigkill level', 'count'], ['total', sum(kernel.sigkill.values())], ['oom_adj <= 7', sum([kernel.sigkill[key] for key in filter(lambda x: x <= 7, kernel.sigkill.keys())])]]))
         print '---> Done'
         story.append(Spacer(1, 0.2 * inch))
         story.append(PageBreak())
@@ -356,11 +382,13 @@ class PDFGen(object):
         print '---> Done'
 
 def _Main():
+    events = EventsLog('events.txt')
+    kernel = KernelLog('kernel.txt')
     meminfo = Meminfo('memlog.txt')
     procrank = Procrank('memlog_procrank.txt')
 
     pdf = PDFGen()
-    pdf.generate(meminfo, procrank)
+    pdf.generate(meminfo, procrank, events, kernel)
 
 if __name__ == '__main__':
     _Main()
