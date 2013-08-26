@@ -1,6 +1,9 @@
 import re
+import os
+import sys
 import time
 import datetime
+import optparse
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, PageBreak
 from reportlab.graphics.shapes import Drawing
@@ -159,33 +162,38 @@ class Procrank(object):
         return (procs, fullDates[0], fullDates[-1], data, title)
 
 class EventsLog(object):
-    def __init__(self, filePath):
-        self.filePath = filePath
+    def __init__(self, filePaths):
+        self.filePaths = filePaths
         self.anr = {}
         self._parse()
-        print self.anr
 
     def _parse(self):
-        fileObject = open(self.filePath, 'r').read()
-        for line in fileObject.split('\n'):
-            find = re.search('(?<=am_anr  : \[)\d+,.*(?=,\d+)', line)
-            if find != None:
-                self.anr[find.group().split(',')[1]] = (self.anr[find.group().split(',')[1]] + 1) if self.anr.has_key(find.group().split(',')[1]) else 1
+        print '---> Start parsing event logs...'
+        for filePath in self.filePaths:
+            print '---> Reading ' + filePath
+            f = open(filePath,'r')
+            findLine = ''.join((line for line in f if "am_anr  : " in line))
+            find = re.findall("(?<=am_anr  : \[)\d+,.*(?=,\d+)", findLine)
+            current = dict((i, [j.split(',')[1] for j in find].count(i)) for i in [j.split(',')[1] for j in find])
+            self.anr = dict((n, self.anr.get(n, 0) + current.get(n, 0)) for n in set(self.anr) | set(current))
+        print '---> Done'
 
 class KernelLog(object):
-    def __init__(self, filePath):
-        self.filePath = filePath
+    def __init__(self, filePaths):
+        self.filePaths = filePaths
         self.sigkill = {}
         self._parse()
-        print self.sigkill
 
     def _parse(self):
-        fileObject = open(self.filePath, 'r').read()
-        for line in fileObject.split('\n'):
-            findLine = re.search('(?<=send sigkill to )\d+ \(.+\), oom_adj \d+,', line)
-            if findLine != None:
-                find = re.search('(?<=oom_adj )\d+(?=,)', findLine.group()).group()
-                self.sigkill[int(find)] = (self.sigkill[int(find)] + 1) if self.sigkill.has_key(int(find)) else 1
+        print '---> Start parsing kernel logs...'
+        for filePath in self.filePaths:
+            print '---> Reading ' + filePath
+            f = open(filePath,'r')
+            findLine = ''.join((line for line in f if "send sigkill to" in line))
+            find = re.findall("(?<=oom_adj )\d+(?=,)", findLine)
+            current = dict((i, find.count(i)) for i in find)
+            self.sigkill = dict( (n, self.sigkill.get(n, 0) + current.get(n, 0)) for n in set(self.sigkill) | set(current) )
+        print '---> Done'
 
 class PDFGen(object):
     Date = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -381,14 +389,37 @@ class PDFGen(object):
         doc.build(story, onFirstPage=self.drawCoverPage, onLaterPages=self.drawContentPage)
         print '---> Done'
 
-def _Main():
-    events = EventsLog('events.txt')
-    kernel = KernelLog('kernel.txt')
-    meminfo = Meminfo('memlog.txt')
-    procrank = Procrank('memlog_procrank.txt')
+def _Main(argv):
+    opt_parser = optparse.OptionParser("%prog [options] directory")
+    opt_parser.add_option('-o', '--output', dest='output',
+        help='Use <FILE> to store the generated report', metavar='DIRECTORY')
+    (opts, args) = opt_parser.parse_args(argv)
 
+    if len(args) != 1:
+        opt_parser.print_help()
+        sys.exit(1)
+
+    elogs = []
+    klogs = []
+    plog = ''
+    mlog = ''
+    for (dirpath, dirnames, filenames) in os.walk(args[0]):
+        for filename in filenames:
+            if filename.startswith('events_'):
+                elogs.append(dirpath + '/' + filename)
+            if filename.startswith('kernel_'):
+                klogs.append(dirpath + '/' + filename)
+            if re.match('memlog_\d{8}_\d+\.txt', filename):
+                mlog = dirpath + '/' + filename
+            if re.match('memlog_\d{8}_\d+_procrank\.txt', filename):
+                plog = dirpath + '/' + filename
+
+    events = EventsLog(elogs)
+    kernel = KernelLog(klogs)
+    meminfo = Meminfo(mlog)
+    procrank = Procrank(plog)
     pdf = PDFGen()
     pdf.generate(meminfo, procrank, events, kernel)
 
 if __name__ == '__main__':
-    _Main()
+    _Main(sys.argv[1:])
