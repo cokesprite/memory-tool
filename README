@@ -1,9 +1,9 @@
-nemory Analysis and Comparison Tool
+Memory Analysis and Comparison Tool
 
 1. Concept
 ----------
 
-nemory Analysis and Comparison Tool is implemented with Python to process original memory logs like
+Memory Analysis and Comparison Tool is implemented with Python to process original memory logs like
 meminfo, procrank, kmemleak and others.
 
 - Memory Analysis (mmparse.py): it is used to parse memory log files and generate a memory analysis

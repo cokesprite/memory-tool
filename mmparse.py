@@ -302,8 +302,16 @@ class PDFGen(object):
         canvas.drawString(inch, 0.75 * inch, "Page %d" % doc.page)
         canvas.restoreState()
 
-    def generate(self, meminfo, procrank, events, kernel):
-        doc = SimpleDocTemplate('memory analysis report.pdf')
+    def generate(self, meminfo, procrank, events, kernel, output):
+        save = None
+        if output == None:
+            save = 'SST Memory Analysis %s' % self.Date
+        else:
+            if output.endswith(('.pdf', '.PDF')):
+                save = output[:-4]
+            else:
+                save = output
+        doc = SimpleDocTemplate(save + '.pdf')
         story = [Spacer(1, 1.7 * inch)]
         story.append(PageBreak())
         print '---> Start generate memory analysis summary...'
@@ -403,6 +411,7 @@ def _Main(argv):
     klogs = []
     plog = ''
     mlog = ''
+    llog = ''
     for (dirpath, dirnames, filenames) in os.walk(args[0]):
         for filename in filenames:
             if filename.startswith('events_'):
@@ -413,13 +422,15 @@ def _Main(argv):
                 mlog = dirpath + '/' + filename
             if re.match('memlog_\d{8}_\d+_procrank\.txt', filename):
                 plog = dirpath + '/' + filename
+            if re.match('memlog_\d{8}_\d+_kmemleak\.txt', filename):
+                llog = dirpath + '/' + filename
 
     events = EventsLog(elogs)
     kernel = KernelLog(klogs)
     meminfo = Meminfo(mlog)
     procrank = Procrank(plog)
     pdf = PDFGen()
-    pdf.generate(meminfo, procrank, events, kernel)
+    pdf.generate(meminfo, procrank, events, kernel, opts.output)
 
 if __name__ == '__main__':
     _Main(sys.argv[1:])
