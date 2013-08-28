@@ -493,7 +493,7 @@ class PDFGen(object):
 def _Main(argv):
     opt_parser = optparse.OptionParser("%prog [options] directory")
     opt_parser.add_option('-o', '--output', dest='output',
-        help='Use <FILE> to store the generated report', metavar='DIRECTORY')
+        help='Use <FILE> to store the generated report', metavar='FILE')
     (opts, args) = opt_parser.parse_args(argv)
 
     if len(args) != 1:
