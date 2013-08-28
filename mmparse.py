@@ -33,6 +33,8 @@ Styles = {'Normal': ParagraphStyle(name = 'Normal', fontName = 'Helvetica', font
           'Heading1': ParagraphStyle(name = 'Heading1', fontName = 'Helvetica-Bold', fontSize = 20, leading = 22, spaceBefore = 30, spaceAfter = 30),
           'Heading2': ParagraphStyle(name = 'Heading2', fontName = 'Helvetica', fontSize = 14, leading = 12, spaceBefore = 20, spaceAfter = 20), }
 
+PATTERN = {"adreno_start": "DISPLAY", "kgsl_open": "DISPLAY", "wifi": "WIFI", "ipv6_setsockopt": "NETWORK"}
+
 class Meminfo(object):
     Free = {'MemFree': 1, 'Cached': 1, 'SwapCached': 1, 'Mlocked': -1, 'Shmem': -1}
     Used = ['AnonPages', 'Slab', 'VmallocAlloc', 'Mlocked', 'Shmem', 'KernelStack', 'PageTables', 'KGSL_ALLOC', 'ION_ALLOC', 'ION_Alloc']
@@ -170,7 +172,6 @@ class EventsLog(object):
     def _parse(self):
         print '---> Start parsing event logs...'
         for filePath in self.filePaths:
-            print '---> Reading ' + filePath
             f = open(filePath,'r')
             findLine = ''.join((line for line in f if "am_anr  : " in line))
             find = re.findall("(?<=am_anr  : \[)\d+,.*(?=,\d+)", findLine)
@@ -182,17 +183,98 @@ class KernelLog(object):
     def __init__(self, filePaths):
         self.filePaths = filePaths
         self.sigkill = {}
+        self.oom = 0
         self._parse()
 
     def _parse(self):
         print '---> Start parsing kernel logs...'
         for filePath in self.filePaths:
-            print '---> Reading ' + filePath
             f = open(filePath,'r')
-            findLine = ''.join((line for line in f if "send sigkill to" in line))
+            findLine = ''.join((line for line in f if "send sigkill to" in line or "invoked oom-killer" in line))
             find = re.findall("(?<=oom_adj )\d+(?=,)", findLine)
             current = dict((i, find.count(i)) for i in find)
             self.sigkill = dict( (n, self.sigkill.get(n, 0) + current.get(n, 0)) for n in set(self.sigkill) | set(current) )
+            find = re.findall("invoked oom-killer", findLine)
+            self.oom = self.oom + len(find)
+        print '---> Done'
+
+class Bugreport(object):
+    def __init__(self, filePath):
+        self.filePath = filePath
+        self.project = None
+        self.romVersion = None
+        self.serial = None
+        self._parse()
+
+    def _parse(self):
+        print '---> Start parsing bugreport log...'
+        try:
+            f = open(self.filePath,'r')
+            findLine = ''.join((line for line in f if "ro.build.project" in line or "ro.build.description" in line or "ro.serialno" in line))
+
+            find = re.search("(?<=\[ro\.build\.project\]: \[).*(?=\])", findLine)
+            if find:
+                self.project = find.group().split(':')[0]
+
+            find = re.search("(?<=\[ro\.build\.description\]: \[).*(?=\])", findLine)
+            if find:
+                result = re.search("#\d+(?=\) test-keys)", find.group())
+                if result:
+                    self.romVersion = 'CL' + result.group()
+                elif "release-keys" in find.group():
+                    self.romVersion = find.group().split()[0]
+
+            find = re.search("(?<=\[ro\.serialno\]: \[).*(?=\])", findLine)
+            if find:
+                self.serial = find.group()
+        except:
+            print '---> WARNING! THERE IS NO BUGREPORT! SHOULD ENTER <PROJECT><ROM VERSION> MANUALLY!'
+            if self.project == None:
+                self.project = raw_input('Please enter PROJECT NAME: ')
+            if self.romVersion == None:
+                self.romVersion = raw_input('Please enter ROM VERSION: ')
+            if self.serial == None:
+                self.serial = raw_input('Please enter SERIAL NO (optional, enter for empty): ')
+        print '---> Done'
+
+class Kmemleak(object):
+    def __init__(self, filePath):
+        self.filePath = filePath
+        self.leak = {}
+        self._parse()
+
+    def _parse(self):
+        print '---> Start parsing kmemleak memlog...'
+        try:
+            fileObject = open(self.filePath, 'r').read()
+        except:
+            print '---> WARNNING! THERE IS NO KMEMLEAK FILE!'
+            return
+        chunks = fileObject.split('unreferenced object')
+
+        for chunk in chunks:
+            lines = chunk.split('\n')
+            backtrace = ''
+            command = ''
+            size = ''
+            function = ''
+            for line in lines:
+                findCommand = re.search("(?<=comm \").*(?=\")", line)
+                if findCommand:
+                    command = findCommand.group()
+                    continue
+                findTrace = re.search("(?<=\[<[0-9a-f]{8}>\] ).*(?=\+)", line)
+                if findTrace:
+                    backtrace = backtrace + findTrace.group() + '\n'
+                    continue
+                findSize = re.search("(?<=\(size )\d+(?=\))", line)
+                if findSize:
+                    size = findSize.group()
+                    continue
+            if backtrace != '' and command != '' and size != '':
+                if not self.leak.has_key((command, size, backtrace[:-1])):
+                    self.leak[(command, size, backtrace[:-1])] = 0
+                self.leak[(command, size, backtrace[:-1])] = self.leak[(command, size, backtrace[:-1])] + 1
         print '---> Done'
 
 class PDFGen(object):
@@ -302,7 +384,7 @@ class PDFGen(object):
         canvas.drawString(inch, 0.75 * inch, "Page %d" % doc.page)
         canvas.restoreState()
 
-    def generate(self, meminfo, procrank, events, kernel, output):
+    def generate(self, meminfo, procrank, events, kernel, kmemleak, bugreport, output):
         save = None
         if output == None:
             save = 'SST Memory Analysis %s' % self.Date
@@ -314,9 +396,19 @@ class PDFGen(object):
         doc = SimpleDocTemplate(save + '.pdf')
         story = [Spacer(1, 1.7 * inch)]
         story.append(PageBreak())
-        print '---> Start generate memory analysis summary...'
+        print '---> Start summarizing memory analysis...'
         story.append(Paragraph('SST Memory Analysis', Styles['Heading1']))
-        story.append(Paragraph('[Project]_[ROM version]{_[SerialNo]}', Styles['Normal']))
+        story.append(Paragraph('[%s]_[%s]' % (bugreport.project, bugreport.romVersion) + (('_[%s]' % bugreport.serial) if len(bugreport.serial) > 0 else ''), Styles['Normal']))
+        story.append(Paragraph('\n', Styles['Normal']))
+        start = time.mktime(time.strptime(meminfo.meminfo['MemTotal'][0][-1], "%Y-%m-%d %H:%M:%S"))
+        end = time.mktime(time.strptime(meminfo.meminfo['MemTotal'][-1][-1], "%Y-%m-%d %H:%M:%S"))
+        duration = end - start
+        day = int(duration) / (3600 * 24)
+        hour = int(duration - day * 3600 * 24) / 3600
+        minute = int(duration - day * 3600 * 24 - hour * 3600) / 60
+        story.append(Paragraph('Start Time: %s' % time.strftime("%Y/%m/%d %H:%M", time.localtime(start)), Styles['Normal']))
+        story.append(Paragraph('End Time: %s' % time.strftime("%Y/%m/%d %H:%M", time.localtime(end)), Styles['Normal']))
+        story.append(Paragraph('Duration: %d Day %02d HR %02d MIN' % (day, hour, minute) , Styles['Normal']))
         story.append(Paragraph('\n', Styles['Normal']))
         story.append(Paragraph('<u>Summary</u>', Styles['Heading2']))
         story.append(Paragraph('System Memory Leakage', Styles['Normal'], u'\u25a0'))
@@ -325,7 +417,7 @@ class PDFGen(object):
         story.append(Paragraph('None<br/> <br/>', Styles['Normal']))
         story.append(Paragraph('ANR and LMK Count', Styles['Normal'], u'\u25a0'))
         story.append(Spacer(1, 0.1 * inch))
-        story.append(self.drawTable([['am_anr', 'send sigkill (LMK)'], [sum(events.anr.values()), sum(kernel.sigkill.values())]]))
+        story.append(self.drawTable([['am_anr', 'send sigkill (LMK)', 'oom killer'], [sum(events.anr.values()), sum(kernel.sigkill.values()), kernel.oom]]))
         story.append(Spacer(1, 0.2 * inch))
         story.append(Paragraph('Memory Usage', Styles['Normal'], u'\u25a0'))
         story.append(Spacer(1, 0.1 * inch))
@@ -344,12 +436,10 @@ class PDFGen(object):
         story.append(Spacer(1, 0.2 * inch))
         story.append(PageBreak())
 
-        print '---> Start drawing table of average and peak meminfo items ...'
+        print '---> Start drawing meminfo tables and charts...'
         story.append(Paragraph('<u>Meminfo Analysis</u>', Styles['Heading2']))
         story.append(self.drawTable(meminfo.tableData(meminfo.Items)))
         story.append(Spacer(1, 0.2 * inch))
-        print '---> Done'
-        print '---> Start drawing chart of meminfo items...'
         story.append(self.drawLineChart(meminfo.drawingData(['Free', 'Cached', 'AnonPages', 'Used']), (meminfo.ram, 100000 if meminfo.ram > 512000 else 50000)))
         story.append(Spacer(1, 0.5 * inch))
         story.append(Paragraph('* Free = MemFree + Cached + SwapCached - Mlocked - Shmem', Styles['Tips']))
@@ -364,7 +454,7 @@ class PDFGen(object):
             story.append(self.drawLineChart(meminfo.drawingData(items)))
             story.append(Spacer(1, 0.5 * inch))
         print '---> Done'
-        print '---> Start drawing table of average and peak procrank items ...'
+        print '---> Start drawing procrank tables and charts...'
         story.append(PageBreak())
         story.append(Paragraph('<u>Procrank Analysis</u>', Styles['Heading2']))
         story.append(Paragraph('TOP20 procrank', Styles['Normal'], u'\u25a0'))
@@ -375,8 +465,6 @@ class PDFGen(object):
         story.append(Spacer(1, 0.1 * inch))
         story.append(self.drawTable(procrank.tableData(procrank.hotProcs())))
         story.append(Spacer(1, 0.2 * inch))
-        print '---> Done'
-        print '---> Start drawing chart of processes in procrank ...'
         story.append(Paragraph('PSS Peak above %s MB' % procrank.RAMS[procrank.ram][0][1], Styles['Normal'], u'\u25a0'))
         story.append(Spacer(1, 0.1 * inch))
         for procs in [procrank.peakHighProcs()[i:i+3] for i in range(0,len(procrank.peakHighProcs()), 3)]:
@@ -392,8 +480,13 @@ class PDFGen(object):
         for procs in [procrank.peakLowProcs()[i:i+3] for i in range(0, len(procrank.peakLowProcs()), 3)]:
             story.append(self.drawLineChart(procrank.drawingData(procs), (1000 * procrank.RAMS[procrank.ram][0][0], 1000 * procrank.RAMS[procrank.ram][1][0])))
             story.append(Spacer(1, 0.6 * inch))
+        story.append(PageBreak())
         print '---> Done'
-        print '---> Start generate report in PDF ...'
+        print '---> Start drawing kmemleak tables...'
+        story.append(Paragraph('<u>Kmem Leakage Analysis</u>', Styles['Heading2']))
+        story.append(self.drawTable([['Process', 'Function', 'Hit count', 'Size', 'Leakage', 'Pattern']] + [[key[0], ''.join([PATTERN[function] if function else '' for function in PATTERN.keys() if key[2].find(function) != -1]), kmemleak.leak[key], key[1], '', key[2]] for key in kmemleak.leak.keys()]))
+        print '---> Done'
+        print '---> Start generating report in PDF ...'
         doc.build(story, onFirstPage=self.drawCoverPage, onLaterPages=self.drawContentPage)
         print '---> Done'
 
@@ -412,6 +505,7 @@ def _Main(argv):
     plog = ''
     mlog = ''
     llog = ''
+    blog = ''
     for (dirpath, dirnames, filenames) in os.walk(args[0]):
         for filename in filenames:
             if filename.startswith('events_'):
@@ -424,13 +518,17 @@ def _Main(argv):
                 plog = dirpath + '/' + filename
             if re.match('memlog_\d{8}_\d+_kmemleak\.txt', filename):
                 llog = dirpath + '/' + filename
+            if filename.startswith('bugreport'):
+                blog = dirpath + '/' + filename
 
+    bugreport = Bugreport(blog)
+    kmemleak = Kmemleak(llog)
     events = EventsLog(elogs)
     kernel = KernelLog(klogs)
     meminfo = Meminfo(mlog)
     procrank = Procrank(plog)
     pdf = PDFGen()
-    pdf.generate(meminfo, procrank, events, kernel, opts.output)
+    pdf.generate(meminfo, procrank, events, kernel, kmemleak, bugreport, opts.output)
 
 if __name__ == '__main__':
     _Main(sys.argv[1:])
