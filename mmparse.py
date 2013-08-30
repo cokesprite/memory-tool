@@ -415,7 +415,7 @@ class PDFGen(object):
         story.append(Paragraph('N<br/> <br/>', Styles['Normal']))
         story.append(Paragraph('Kernel Memory Leakage', Styles['Normal'], u'\u25a0'))
         story.append(Paragraph('None<br/> <br/>', Styles['Normal']))
-        story.append(Paragraph('ANR and LMK Count', Styles['Normal'], u'\u25a0'))
+        story.append(Paragraph('ANR, LMK send sigkill and oom kill Count', Styles['Normal'], u'\u25a0'))
         story.append(Spacer(1, 0.1 * inch))
         story.append(self.drawTable([['am_anr', 'send sigkill (LMK)', 'oom killer'], [sum(events.anr.values()), sum(kernel.sigkill.values()), kernel.oom]]))
         story.append(Spacer(1, 0.2 * inch))
