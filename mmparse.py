@@ -50,8 +50,12 @@ class Meminfo(object):
         self._parse()
 
     def _parse(self):
-        fileObject = open(self.filePath, 'r').read()
         print '---> Start parsing meminfo memlog ...'
+        try:
+            fileObject = open(self.filePath, 'r').read()
+        except:
+            print '---> ERROR: THERE IS NO MEMINFO MEMLOG!'
+            sys.exit(1)
         chunks = fileObject.split('------ MEMORY INFO')
         dates = []
         self.meminfo['Free'] = []
@@ -100,6 +104,9 @@ class Meminfo(object):
     def inRange(self, items, rangeValue):
         return filter(lambda x: max([int(value[0]) for value in self.meminfo[x]]) < rangeValue, filter(lambda x: self.meminfo.has_key(x), items))
 
+    def hasLeakage(self):
+        print 'haha'
+
 class Procrank(object):
     RAMS = {512: ((20, 50, 200), (2, 5, 20)), 768: ((20, 50, 200), (2, 5, 20)), 1024: ((50, 100, 500), (5, 10, 50)), 2048: ((50, 100, 500), (5, 10, 50))}
     def __init__(self, filePath):
@@ -110,30 +117,33 @@ class Procrank(object):
         self._parse()
 
     def _parse(self):
-        fileObject = open(self.filePath, 'r').read()
         print '---> Start parsing procrank memlog ...'
-        chunks = fileObject.split('------ PROCRANK')
-        for chunk in chunks[1:]:
-            lines = chunk.split('\n')
-            date = re.search('\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d', lines[0]).group()
-            self.dates.append(date)
-            ram = re.search("(?<=RAM: )\d+(?=K)", lines[-2])
-            if ram != None and self.ram == 0:
-                self.ram = reduce(lambda x, y: y if x <= (int(ram.group()) / 1000) and y > (int(ram.group()) / 1000) else x, self.RAMS.keys())
-            start = False
-            for line in lines:
-                if not start:
-                    if re.search("^\s*\d+(\s+\d+K){4}", line) != None: start = True
-                    else: continue
-                else:
-                    if re.search("^\s*\d+(\s+\d+K){4}", line) == None:
-                        start = False
-                        break
-                formated = line.split()
-                if not self.procrank.has_key(formated[-1]):
-                    self.procrank[formated[-1]] = []
-                self.procrank[formated[-1]].append(formated[1:-1] + [date])
-        print '---> Done'
+        try:
+            fileObject = open(self.filePath, 'r').read()
+            chunks = fileObject.split('------ PROCRANK')
+            for chunk in chunks[1:]:
+                lines = chunk.split('\n')
+                date = re.search('\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d', lines[0]).group()
+                self.dates.append(date)
+                ram = re.search("(?<=RAM: )\d+(?=K)", lines[-2])
+                if ram != None and self.ram == 0:
+                    self.ram = reduce(lambda x, y: y if x <= (int(ram.group()) / 1000) and y > (int(ram.group()) / 1000) else x, self.RAMS.keys())
+                start = False
+                for line in lines:
+                    if not start:
+                        if re.search("^\s*\d+(\s+\d+K){4}", line) != None: start = True
+                        else: continue
+                    else:
+                        if re.search("^\s*\d+(\s+\d+K){4}", line) == None:
+                            start = False
+                            break
+                    formated = line.split()
+                    if not self.procrank.has_key(formated[-1]):
+                        self.procrank[formated[-1]] = []
+                    self.procrank[formated[-1]].append(formated[1:-1] + [date])
+            print '---> Done'
+        except:
+            print '---> WARNING: THERE IS NO PROCRANK MEMLOG!'
 
     def topProcs(self):
         return sorted(self.procrank.keys(), key=lambda proc: reduce(lambda x, y: x + y, [int(value[2][:-1]) for value in self.procrank[proc]]) / len(self.procrank[proc]), reverse=True)[:20]
@@ -248,7 +258,7 @@ class Kmemleak(object):
         try:
             fileObject = open(self.filePath, 'r').read()
         except:
-            print '---> WARNNING! THERE IS NO KMEMLEAK FILE!'
+            print '---> WARNING! THERE IS NO KMEMLEAK FILE!'
             return
         chunks = fileObject.split('unreferenced object')
 
@@ -453,34 +463,35 @@ class PDFGen(object):
         if (len(items) > 0):
             story.append(self.drawLineChart(meminfo.drawingData(items)))
             story.append(Spacer(1, 0.5 * inch))
+        story.append(PageBreak())
         print '---> Done'
         print '---> Start drawing procrank tables and charts...'
-        story.append(PageBreak())
-        story.append(Paragraph('<u>Procrank Analysis</u>', Styles['Heading2']))
-        story.append(Paragraph('TOP20 procrank', Styles['Normal'], u'\u25a0'))
-        story.append(Spacer(1, 0.1 * inch))
-        story.append(self.drawTable(procrank.tableData(procrank.topProcs())))
-        story.append(Spacer(1, 0.2 * inch))
-        story.append(Paragraph('Specific procrank', Styles['Normal'], u'\u25a0'))
-        story.append(Spacer(1, 0.1 * inch))
-        story.append(self.drawTable(procrank.tableData(procrank.hotProcs())))
-        story.append(Spacer(1, 0.2 * inch))
-        story.append(Paragraph('PSS Peak above %s MB' % procrank.RAMS[procrank.ram][0][1], Styles['Normal'], u'\u25a0'))
-        story.append(Spacer(1, 0.1 * inch))
-        for procs in [procrank.peakHighProcs()[i:i+3] for i in range(0,len(procrank.peakHighProcs()), 3)]:
-            story.append(self.drawLineChart(procrank.drawingData(procs), (1000 * procrank.RAMS[procrank.ram][0][2], 1000 * procrank.RAMS[procrank.ram][1][2])))
-            story.append(Spacer(1, 0.6 * inch))
-        story.append(Paragraph('PSS Peak between %s MB and %s MB' % (procrank.RAMS[procrank.ram][0][0], procrank.RAMS[procrank.ram][0][1]), Styles['Normal'], u'\u25a0'))
-        story.append(Spacer(1, 0.1 * inch))
-        for procs in [procrank.peakMediumProcs()[i:i+3] for i in range(0, len(procrank.peakMediumProcs()), 3)]:
-            story.append(self.drawLineChart(procrank.drawingData(procs), (1000 * procrank.RAMS[procrank.ram][0][1], 1000 * procrank.RAMS[procrank.ram][1][1])))
-            story.append(Spacer(1, 0.6 * inch))
-        story.append(Paragraph('PSS Peak below %s MB' % procrank.RAMS[procrank.ram][0][0], Styles['Normal'], u'\u25a0'))
-        story.append(Spacer(1, 0.1 * inch))
-        for procs in [procrank.peakLowProcs()[i:i+3] for i in range(0, len(procrank.peakLowProcs()), 3)]:
-            story.append(self.drawLineChart(procrank.drawingData(procs), (1000 * procrank.RAMS[procrank.ram][0][0], 1000 * procrank.RAMS[procrank.ram][1][0])))
-            story.append(Spacer(1, 0.6 * inch))
-        story.append(PageBreak())
+        if procrank.ram:
+            story.append(Paragraph('<u>Procrank Analysis</u>', Styles['Heading2']))
+            story.append(Paragraph('TOP20 procrank', Styles['Normal'], u'\u25a0'))
+            story.append(Spacer(1, 0.1 * inch))
+            story.append(self.drawTable(procrank.tableData(procrank.topProcs())))
+            story.append(Spacer(1, 0.2 * inch))
+            story.append(Paragraph('Specific procrank', Styles['Normal'], u'\u25a0'))
+            story.append(Spacer(1, 0.1 * inch))
+            story.append(self.drawTable(procrank.tableData(procrank.hotProcs())))
+            story.append(Spacer(1, 0.2 * inch))
+            story.append(Paragraph('PSS Peak above %s MB' % procrank.RAMS[procrank.ram][0][1], Styles['Normal'], u'\u25a0'))
+            story.append(Spacer(1, 0.1 * inch))
+            for procs in [procrank.peakHighProcs()[i:i+3] for i in range(0,len(procrank.peakHighProcs()), 3)]:
+                story.append(self.drawLineChart(procrank.drawingData(procs), (1000 * procrank.RAMS[procrank.ram][0][2], 1000 * procrank.RAMS[procrank.ram][1][2])))
+                story.append(Spacer(1, 0.6 * inch))
+            story.append(Paragraph('PSS Peak between %s MB and %s MB' % (procrank.RAMS[procrank.ram][0][0], procrank.RAMS[procrank.ram][0][1]), Styles['Normal'], u'\u25a0'))
+            story.append(Spacer(1, 0.1 * inch))
+            for procs in [procrank.peakMediumProcs()[i:i+3] for i in range(0, len(procrank.peakMediumProcs()), 3)]:
+                story.append(self.drawLineChart(procrank.drawingData(procs), (1000 * procrank.RAMS[procrank.ram][0][1], 1000 * procrank.RAMS[procrank.ram][1][1])))
+                story.append(Spacer(1, 0.6 * inch))
+            story.append(Paragraph('PSS Peak below %s MB' % procrank.RAMS[procrank.ram][0][0], Styles['Normal'], u'\u25a0'))
+            story.append(Spacer(1, 0.1 * inch))
+            for procs in [procrank.peakLowProcs()[i:i+3] for i in range(0, len(procrank.peakLowProcs()), 3)]:
+                story.append(self.drawLineChart(procrank.drawingData(procs), (1000 * procrank.RAMS[procrank.ram][0][0], 1000 * procrank.RAMS[procrank.ram][1][0])))
+                story.append(Spacer(1, 0.6 * inch))
+            story.append(PageBreak())
         print '---> Done'
         print '---> Start drawing kmemleak tables...'
         story.append(Paragraph('<u>Kmem Leakage Analysis</u>', Styles['Heading2']))
@@ -489,6 +500,7 @@ class PDFGen(object):
         print '---> Start generating report in PDF ...'
         doc.build(story, onFirstPage=self.drawCoverPage, onLaterPages=self.drawContentPage)
         print '---> Done'
+        print '---> Please check generated PDF at <' + save + '.pdf>'
 
 def _Main(argv):
     opt_parser = optparse.OptionParser("%prog [options] directory")
