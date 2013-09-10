@@ -34,7 +34,7 @@ Styles = {'Normal': ParagraphStyle(name = 'Normal', fontName = 'Helvetica', font
           'Heading1': ParagraphStyle(name = 'Heading1', fontName = 'Helvetica-Bold', fontSize = 20, leading = 22, spaceBefore = 30, spaceAfter = 30),
           'Heading2': ParagraphStyle(name = 'Heading2', fontName = 'Helvetica', fontSize = 14, leading = 12, spaceBefore = 20, spaceAfter = 20), }
 
-PATTERN = {"adreno_start": "DISPLAY", "kgsl_open": "DISPLAY", "wifi": "WIFI", "ipv6_setsockopt": "NETWORK"}
+PATTERN = {"adreno_start": "DISPLAY", "kgsl_open": "DISPLAY", "kgsl_ioctl": "DISPLAY", "wifi": "WIFI", "ipv6_setsockopt": "NETWORK", "vid_dec_open": "VIDEO"}
 
 class Meminfo(object):
     Free = {'MemFree': 1, 'Cached': 1, 'SwapCached': 1, 'Mlocked': -1, 'Shmem': -1}
