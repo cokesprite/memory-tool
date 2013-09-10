@@ -4,6 +4,7 @@ import sys
 import time
 import datetime
 import optparse
+import numpy as np
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, PageBreak
 from reportlab.graphics.shapes import Drawing
@@ -60,7 +61,6 @@ class Meminfo(object):
         dates = []
         self.meminfo['Free'] = []
         self.meminfo['Used'] = []
-        self.meminfo['SwapUsage'] = []
         self.meminfo['LMK File'] = []
         for chunk in chunks[1:]:
             lines = chunk.split('\n')
@@ -82,8 +82,12 @@ class Meminfo(object):
                     self.ram = int(formated[1])
             self.meminfo['Free'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) * self.Free[value] for value in filter(lambda x: self.meminfo.has_key(x), self.Free.keys())]), date])
             self.meminfo['Used'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) for value in filter(lambda x: self.meminfo.has_key(x), self.Used)]), date])
-            self.meminfo['SwapUsage'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) * self.SwapUsage[value] for value in filter(lambda x: self.meminfo.has_key(x), self.SwapUsage.keys())]), date])
-            self.meminfo['LMK File'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) * self.LMKFile[value] for value in filter(lambda x: self.meminfo.has_key(x), self.LMKFile.keys())]), date])
+            if set(self.meminfo.keys()) & set(self.SwapUsage.keys()):
+                if not self.meminfo.has_key('SwapUsage'): self.meminfo['SwapUsage'] = []
+                self.meminfo['SwapUsage'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) * self.SwapUsage[value] for value in filter(lambda x: self.meminfo.has_key(x), self.SwapUsage.keys())]), date])
+            if set(self.meminfo.keys()) & set(self.LMKFile.keys()):
+                if not self.meminfo.has_key('LMK File'): self.meminfo['LMK File'] = []
+                self.meminfo['LMK File'].append([reduce(lambda x, y: x + y, [int(self.meminfo[value][-1][0]) * self.LMKFile[value] for value in filter(lambda x: self.meminfo.has_key(x), self.LMKFile.keys())]), date])
         print '---> Done'
 
     def tableData(self, items):
@@ -104,8 +108,84 @@ class Meminfo(object):
     def inRange(self, items, rangeValue):
         return filter(lambda x: max([int(value[0]) for value in self.meminfo[x]]) < rangeValue, filter(lambda x: self.meminfo.has_key(x), items))
 
-    def hasLeakage(self):
-        print 'haha'
+    def hasLeakage(self, item):
+        def var(X):
+            S = 0.0
+            SS = 0.0
+            for x in X:
+                S += x
+                SS += x*x
+            xbar = S/float(len(X))
+            return (SS - len(X) * xbar * xbar) / (len(X) -1.0)
+        def cov(X,Y):
+            n = len(X)
+            xbar = sum(X) / n
+            ybar = sum(Y) / n
+            return sum([(x-xbar)*(y-ybar) for x,y in zip(X,Y)])/(n-1)
+        def beta(x,y):
+            return cov(x,y)/var(x)
+        if self.meminfo.has_key(item):
+            converted = map(lambda tstring: [int(tstring[0]), time.mktime(time.strptime(tstring[1], "%Y-%m-%d %H:%M:%S"))], self.meminfo[item])
+            arr = np.array(converted)
+            start = int(arr[:,1][0])
+            end = int(arr[:,1][-1])
+            split = 10
+            continious = 0
+            for index in range(start, end, 3600):
+                conditions = (arr[:,1] >= index) & (arr[:,1] <= (index + 3600))
+                subArray = arr[:,0].compress(conditions)
+                windows = np.array_split(subArray, split)
+                count = 0
+                for i in range(len(windows)):
+                    y = windows[i].tolist()
+                    if len(y) <= 1: continue
+                    x = range(1, len(y) + 1)
+                    increase = beta(x, y)
+                    if increase > 1: count = count +1
+                    else: count = 0
+                    if count >= 4:
+                        continious = continious + 1
+                        break
+                if count < 4: continious = 0
+                if continious >= 5: return True
+        return False
+
+    def hasMoreLeakage(self, item):
+        def var(X):
+            S = 0.0
+            SS = 0.0
+            for x in X:
+                S += x
+                SS += x*x
+            xbar = S/float(len(X))
+            return (SS - len(X) * xbar * xbar) / (len(X) -1.0)
+        def cov(X,Y):
+            n = len(X)
+            xbar = sum(X) / n
+            ybar = sum(Y) / n
+            return sum([(x-xbar)*(y-ybar) for x,y in zip(X,Y)])/(n-1)
+        def beta(x,y):
+            return cov(x,y)/var(x)
+
+        if self.meminfo.has_key(item):
+            arr = np.array(self.meminfo[item])
+            percentage = []
+            for splits in range(3, 10, 1):
+                subArrs = np.array_split(arr, splits)
+                count = 0
+                for i in range(splits):
+                    values = subArrs[i][:,0].astype(np.int)
+                    mean = values.mean()
+                    if values[-1] > mean and values[0] < mean:
+                        count = count + 1
+                percentage.append(int(float(count) * 100 / splits))
+            y = arr[:,0].astype(np.int).tolist()
+            x = range(1, len(y) + 1)
+            beta = beta(x, y)
+            if beta > 1:
+                return (beta, sum(percentage) / len(percentage))
+            else:
+                return False
 
 class Procrank(object):
     RAMS = {512: ((20, 50, 200), (2, 5, 20)), 768: ((20, 50, 200), (2, 5, 20)), 1024: ((50, 100, 500), (5, 10, 50)), 2048: ((50, 100, 500), (5, 10, 50))}
@@ -422,7 +502,12 @@ class PDFGen(object):
         story.append(Paragraph('\n', Styles['Normal']))
         story.append(Paragraph('<u>Summary</u>', Styles['Heading2']))
         story.append(Paragraph('System Memory Leakage', Styles['Normal'], u'\u25a0'))
-        story.append(Paragraph('N<br/> <br/>', Styles['Normal']))
+        leakage = []
+        for item in meminfo.Summary:
+            if meminfo.hasLeakage(item):
+                leakage.append(item)
+        if len(leakage): story.append(Paragraph('Yes, the following meminfo items may have leakage:<br/><b>%s</b><br/> <br/>' % ' '.join(leakage), Styles['Normal']))
+        else: story.append(Paragraph('N<br/> <br/>', Styles['Normal']))
         story.append(Paragraph('Kernel Memory Leakage', Styles['Normal'], u'\u25a0'))
         story.append(Paragraph('None<br/> <br/>', Styles['Normal']))
         story.append(Paragraph('ANR, LMK send sigkill and oom kill Count', Styles['Normal'], u'\u25a0'))
@@ -449,6 +534,8 @@ class PDFGen(object):
         print '---> Start drawing meminfo tables and charts...'
         story.append(Paragraph('<u>Meminfo Analysis</u>', Styles['Heading2']))
         story.append(self.drawTable(meminfo.tableData(meminfo.Items)))
+        story.append(Spacer(1, 0.2 * inch))
+        story.append(self.drawLineChart(meminfo.drawingData(['KGSL_ALLOC', 'Used', 'MemFree'])))
         story.append(Spacer(1, 0.2 * inch))
         story.append(self.drawLineChart(meminfo.drawingData(['Free', 'Cached', 'AnonPages', 'Used']), (meminfo.ram, 100000 if meminfo.ram > 512000 else 50000)))
         story.append(Spacer(1, 0.5 * inch))
