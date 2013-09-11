@@ -526,7 +526,7 @@ class PDFGen(object):
         for item in meminfo.Summary:
             if meminfo.hasLeakage(item):
                 leakage.append(item)
-        if len(leakage): story.append(Paragraph('Yes, the following meminfo items may have leakage:<br/><b>%s</b><br/> <br/>' % ' '.join(leakage), Styles['Normal']))
+        if len(leakage): story.append(Paragraph('Yes, the following meminfo items may have leakage:<br/>%s<br/> <br/>' % ', '.join(leakage), Styles['Normal']))
         else: story.append(Paragraph('N<br/> <br/>', Styles['Normal']))
         story.append(Paragraph('Kernel Memory Leakage', Styles['Normal'], u'\u25a0'))
         leakage = kmemleak.hasLeakage()
