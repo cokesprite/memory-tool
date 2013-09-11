@@ -331,7 +331,12 @@ class Kmemleak(object):
     def __init__(self, filePath):
         self.filePath = filePath
         self.leak = {}
+        self.last = []
+        self.duration = 0
         self._parse()
+
+    def hasLeakage(self):
+        return [item for item in self.last if (float(item[-1]) > (0.4 * self.duration))]
 
     def _parse(self):
         print '---> Start parsing kmemleak memlog...'
@@ -340,31 +345,46 @@ class Kmemleak(object):
         except:
             print '---> WARNING! THERE IS NO KMEMLEAK FILE!'
             return
-        chunks = fileObject.split('unreferenced object')
-
-        for chunk in chunks:
-            lines = chunk.split('\n')
-            backtrace = ''
-            command = ''
-            size = ''
-            function = ''
-            for line in lines:
-                findCommand = re.search("(?<=comm \").*(?=\")", line)
-                if findCommand:
-                    command = findCommand.group()
-                    continue
-                findTrace = re.search("(?<=\[<[0-9a-f]{8}>\] ).*(?=\+)", line)
-                if findTrace:
-                    backtrace = backtrace + findTrace.group() + '\n'
-                    continue
-                findSize = re.search("(?<=\(size )\d+(?=\))", line)
-                if findSize:
-                    size = findSize.group()
-                    continue
-            if backtrace != '' and command != '' and size != '':
-                if not self.leak.has_key((command, size, backtrace[:-1])):
-                    self.leak[(command, size, backtrace[:-1])] = 0
-                self.leak[(command, size, backtrace[:-1])] = self.leak[(command, size, backtrace[:-1])] + 1
+        bigChunks = fileObject.split('------ KERNEL MEMORY LEAK')
+        findStart = None
+        findEnd = None
+        for i in range(len(bigChunks)):
+            bigChunk = bigChunks[i]
+            chunks = bigChunk.split('unreferenced object')
+            for chunk in chunks:
+                lines = chunk.split('\n')
+                backtrace = ''
+                command = ''
+                size = ''
+                function = ''
+                age = ''
+                for line in lines:
+                    if not findStart:
+                        findStart = re.search("(?<=/proc/kmemleak: )\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", line)
+                    if i == (len(bigChunks) - 1):
+                        findAge = re.search("(?<=\(age )\d+\.\d{3}(?=s\))", line)
+                        if findAge: age = findAge.group()
+                        if not findEnd: findEnd = re.search("(?<=/proc/kmemleak: )\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", line)
+                    findCommand = re.search("(?<=comm \").*(?=\")", line)
+                    if findCommand:
+                        command = findCommand.group()
+                        continue
+                    findTrace = re.search("(?<=\[<[0-9a-f]{8}>\] ).*(?=\+)", line)
+                    if findTrace:
+                        backtrace = backtrace + findTrace.group() + '\n'
+                        continue
+                    findSize = re.search("(?<=\(size )\d+(?=\))", line)
+                    if findSize:
+                        size = findSize.group()
+                        continue
+                if backtrace != '' and command != '' and size != '':
+                    if not self.leak.has_key((command, size, backtrace[:-1])):
+                        self.leak[(command, size, backtrace[:-1])] = 0
+                    self.leak[(command, size, backtrace[:-1])] = self.leak[(command, size, backtrace[:-1])] + 1
+                    if i == (len(bigChunks) - 1):
+                        if age != '': self.last.append((command, size, backtrace[:-1], age))
+        if findStart and findEnd:
+            self.duration = time.mktime(time.strptime(findEnd.group(), "%Y-%m-%d %H:%M:%S")) - time.mktime(time.strptime(findStart.group(), "%Y-%m-%d %H:%M:%S"))
         print '---> Done'
 
 class PDFGen(object):
@@ -509,7 +529,8 @@ class PDFGen(object):
         if len(leakage): story.append(Paragraph('Yes, the following meminfo items may have leakage:<br/><b>%s</b><br/> <br/>' % ' '.join(leakage), Styles['Normal']))
         else: story.append(Paragraph('N<br/> <br/>', Styles['Normal']))
         story.append(Paragraph('Kernel Memory Leakage', Styles['Normal'], u'\u25a0'))
-        story.append(Paragraph('None<br/> <br/>', Styles['Normal']))
+        leakage = kmemleak.hasLeakage()
+        story.append(Paragraph('%s<br/> <br/>' % 'None' if kmemleak.duration == 0 or kmemleak.filePath == '' else 'Y' if len(leakage) else 'N', Styles['Normal']))
         story.append(Paragraph('ANR, LMK send sigkill and oom kill Count', Styles['Normal'], u'\u25a0'))
         story.append(Spacer(1, 0.1 * inch))
         story.append(self.drawTable([['am_anr', 'send sigkill (LMK)', 'oom killer'], [sum(events.anr.values()) if len(events.filePaths) else 'none', sum(kernel.sigkill.values()) if len(kernel.filePaths) else 'none', kernel.oom if len(kernel.filePaths) else 'none']]))
