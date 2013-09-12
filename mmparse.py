@@ -487,12 +487,16 @@ class PDFGen(object):
         canvas.setFont('Helvetica', 9)
         canvas.drawString(inch, 0.75 * inch, "Page %d" % doc.page)
         canvas.restoreState()
+        sys.stdout.write('%d ' % doc.page)
+        sys.stdout.flush()
 
     def drawContentPage(self, canvas, doc):
         canvas.saveState()
         canvas.setFont('Helvetica', 9)
         canvas.drawString(inch, 0.75 * inch, "Page %d" % doc.page)
         canvas.restoreState()
+        sys.stdout.write('%d ' % doc.page)
+        sys.stdout.flush()
 
     def generate(self, meminfo, procrank, events, kernel, kmemleak, bugreport, output):
         save = None
@@ -556,8 +560,6 @@ class PDFGen(object):
         story.append(Paragraph('<u>Meminfo Analysis</u>', Styles['Heading2']))
         story.append(self.drawTable(meminfo.tableData(meminfo.Items)))
         story.append(Spacer(1, 0.2 * inch))
-        story.append(self.drawLineChart(meminfo.drawingData(['KGSL_ALLOC', 'Used', 'MemFree'])))
-        story.append(Spacer(1, 0.2 * inch))
         story.append(self.drawLineChart(meminfo.drawingData(['Free', 'Cached', 'AnonPages', 'Used']), (meminfo.ram, 100000 if meminfo.ram > 512000 else 50000)))
         story.append(Spacer(1, 0.5 * inch))
         story.append(Paragraph('* Free = MemFree + Cached + SwapCached - Mlocked - Shmem', Styles['Tips']))
@@ -606,8 +608,9 @@ class PDFGen(object):
         story.append(self.drawTable([['Process', 'Function', 'Hit count', 'Size', 'Leakage', 'Pattern']] + [[key[0], ''.join([PATTERN[function] if function else '' for function in PATTERN.keys() if key[2].find(function) != -1]), kmemleak.leak[key], key[1], '', key[2]] for key in kmemleak.leak.keys()]))
         print '---> Done'
         print '---> Start generating report in PDF ...'
+        sys.stdout.write('---> Page ')
         doc.build(story, onFirstPage=self.drawCoverPage, onLaterPages=self.drawContentPage)
-        print '---> Done'
+        print '\n---> Done'
         print '---> Please check generated PDF at <' + save + '.pdf>'
 
 def _Main(argv):
