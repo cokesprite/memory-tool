@@ -1,0 +1,1 @@
+{ "5.0.5": [{ "app": "abcdefg", "patch": "abcdefg", "md5": "MD5AAAAAAAAAA" }, { "app": "hijklmn", "patch": "hijklmn", "md5": "MD5BBBBBBBBBBBBBBB" }], "5.0.4": [{ "app": "opqrstu", "patch": "opqrstu", "md5": "MD5CCCCCCCCCC" }] }
